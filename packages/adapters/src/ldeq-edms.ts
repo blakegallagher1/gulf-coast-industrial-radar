@@ -3,25 +3,42 @@
  *
  * Schema reference: packages/adapters/src/research/ldeq-edms.md
  *
- * Phase 3.1 hardening notes:
- *   - The research artifact confirms the live entry point is
- *     https://edms.deq.louisiana.gov (portal access via
- *     https://www.deq.louisiana.gov/page/edms). No REST API was documented.
- *   - The SEARCH_PATH "/app/svcs/Search.svc/SearchAdvanced" is an inferred
- *     internal AJAX path. The research artifact found no evidence of this
- *     endpoint; it may not exist or may require session auth.
- *   - TODO(phase3.1): Confirm whether SearchAdvanced endpoint is publicly
- *     reachable and, if not, pivot to scraping the EDMS HTML search results.
- *     The AI number (Agency Interest number) is the primary query key on the
- *     public HTML interface (no query params documented for bulk extraction).
- *   - TODO(phase3.1): Investigate TEMPO (https://tempo.deq.louisiana.gov)
- *     as a potentially scrapable structured-permit backend.
- *   - Field names (DocumentId, FacilityName, Parish, ActivityType,
- *     PermitNumber, UrlPath) are plausible based on doc-metadata context
- *     but are NOT confirmed by the research artifact. Do not rename without
- *     a live response sample.
+ * Phase 3.1.1 live-probe results (2026-04-30 — replaces all prior TODOs):
  *
- * Predicate vocabulary:
+ *   1. The legacy URL `/app/svcs/Search.svc/SearchAdvanced` returns HTTP 500
+ *      with no body. The endpoint does NOT exist in the form previously
+ *      documented; the inferred AJAX path was wrong.
+ *
+ *   2. EDMS now runs as an Angular SPA at `/edmsv2/`. The SPA loads its
+ *      runtime config via the public endpoint
+ *         GET https://edms.deq.louisiana.gov/edmsv2/account/GetUIAppSettings
+ *      which returns `apiCoreServiceURL = "https://edms.deq.louisiana.gov/ASC.API.EDMS.Services/"`.
+ *
+ *   3. The real document-search endpoints live under
+ *         POST {apiCoreServiceURL}api/document/docSearch
+ *         POST {apiCoreServiceURL}api/document/Search
+ *         GET  {apiCoreServiceURL}api/document/GetByAiNumber?aiNumber=…
+ *      …and ALL of them return HTTP 401 without an auth token. The SPA
+ *      acquires a token via cookie-based session auth (likely SAML / SSO)
+ *      that is not exposed for anonymous machine-to-machine use.
+ *
+ *   4. There is NO documented public REST surface for bulk EDMS search.
+ *      The Public Records Request portal (PRR) is for one-off requests, not
+ *      an ingestion path. TEMPO (https://tempo.deq.louisiana.gov) is a
+ *      separate per-permit submission system, not a document-search API.
+ *
+ *   5. Practical adapter behaviour:
+ *      - `implemented: false` — no anonymous machine-readable bulk surface
+ *      - `run()` returns `{ records: [] }` with explanatory notes so the
+ *        worker doesn't crash, and degraded source health surfaces in the UI
+ *      - Real ingestion path (deferred): Playwright headless flow against
+ *        the public `/edmsv2/` SPA. The "Public Search" landing flow can
+ *        be driven without login because the SPA's anonymous session is
+ *        bootstrapped via cookies set on first GET to `/edmsv2/`.
+ *      - A second deferred path: scrape the legacy `/app/EDMS_Search.aspx`
+ *        which still serves HTML (HTTP 200) and can be parsed.
+ *
+ * Predicate vocabulary (when we eventually wire the Playwright path):
  *   permit.air.NOI           — air-quality NOI (Class I/II/III)
  *   permit.water.NPDES       — NPDES water-discharge permit (LPDES / NPDES)
  *   permit.wetlands.404      — Section 404 wetlands fill
@@ -37,94 +54,54 @@ import type {
 import { fetchWithRetry } from "./utils/fetch-with-retry";
 
 const BASE = process.env.LDEQ_EDMS_BASE ?? "https://edms.deq.louisiana.gov";
+/** Anonymous config endpoint — returns the API base + UI flags. */
+const APP_SETTINGS_PATH = "/edmsv2/account/GetUIAppSettings";
 
-/**
- * EDMS public-search endpoint.
- * TODO(phase3.1): This path is inferred — not confirmed by the research
- * artifact. If requests return 404 / redirect, replace with HTML-scrape
- * of https://edms.deq.louisiana.gov/app/Activity/Search.
- */
-const SEARCH_PATH = "/app/svcs/Search.svc/SearchAdvanced";
-
-// Activity types that map to permitting actions we care about.
-const PERMIT_ACTIVITY_TYPES = new Set([
-  "Air",
-  "Water",
-  "WasteWater",
-  "SolidWaste",
-  "Wetlands",
-]);
-
-interface EdmsSearchResponse {
-  d: EdmsDocument[];
-}
-
-interface EdmsDocument {
-  DocumentId: string;
-  FacilityName: string;
-  Parish: string;
-  ActivityType: string;
-  PermitNumber: string;
-  UrlPath: string;
-}
-
-export const ldeqEdmsAdapter: SourceAdapter = {
-  id: "ldeq-edms",
-
-  async fetch(ctx: AdapterContext): Promise<AdapterResult> {
-    const url = `${BASE}${SEARCH_PATH}`;
-    const body = JSON.stringify({
-      Parish: ctx.parish ?? "",
-      ActivityType: "",
-      StatusCode: "PENDING",
-    });
-
-    let raw: EdmsSearchResponse;
-    try {
-      const res = await fetchWithRetry(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-      });
-      raw = (await res.json()) as EdmsSearchResponse;
-    } catch (err) {
-      ctx.logger?.warn("ldeq-edms fetch failed", { err });
-      return { records: [] };
-    }
-
-    const records: AdapterRecord[] = (raw.d ?? []).flatMap((doc) => {
-      if (!PERMIT_ACTIVITY_TYPES.has(doc.ActivityType)) return [];
-      return [
-        {
-          sourceId: `ldeq-edms:${doc.DocumentId}`,
-          predicate: activityToPredicate(doc.ActivityType),
-          title: doc.FacilityName,
-          description: `LDEQ ${doc.ActivityType} permit — ${doc.PermitNumber}`,
-          location: { parish: doc.Parish },
-          url: doc.UrlPath
-            ? `${BASE}${doc.UrlPath}`
-            : `${BASE}/app/Activity/Search`,
-          fetchedAt: new Date().toISOString(),
-        },
-      ];
-    });
-
-    return { records };
-  },
+type AppSettings = {
+  apiCoreServiceURL?: string;
+  edmsViewerURL?: string;
+  uiBannerLabel?: string;
+  uiPublicSearchFormTitle?: string;
 };
 
-function activityToPredicate(type: string): string {
-  switch (type) {
-    case "Air":
-      return "permit.air.NOI";
-    case "Water":
-    case "WasteWater":
-      return "permit.water.NPDES";
-    case "Wetlands":
-      return "permit.wetlands.404";
-    case "SolidWaste":
-      return "permit.solid.waste";
-    default:
-      return "permit.other";
-  }
-}
+/**
+ * Even though the search API is auth-gated, we still ping the public app-settings
+ * endpoint on each tick so the worker can:
+ *   1. confirm EDMS is reachable
+ *   2. surface any banner-label / outage notice from LDEQ
+ *   3. detect when the API base URL changes (so we can rewire automatically
+ *      when LDEQ refactors the SPA)
+ */
+export const ldeqEdmsAdapter: SourceAdapter = {
+  slug: "ldeq-edms",
+  family: "ENVIRONMENTAL_PERMIT",
+  implemented: false,
+  async run(_ctx: AdapterContext): Promise<AdapterResult> {
+    let appSettings: AppSettings | null = null;
+    try {
+      const res = await fetchWithRetry(BASE + APP_SETTINGS_PATH, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        timeoutMs: 15_000,
+        userAgent: "GulfCoastIndustrialRadar/0.1 contact@gallagherpropco.com",
+      });
+      appSettings = (await res.json()) as AppSettings;
+    } catch {
+      /* swallow — the empty result + notes still surface the source state */
+    }
+
+    // Emit a single zero-record telemetry signal so the source health UI sees a
+    // successful ping (when reachable) but understands no documents were
+    // ingested. Once the Playwright flow ships we'll start emitting real
+    // permit records here.
+    const records: AdapterRecord[] = [];
+
+    const note =
+      appSettings?.apiCoreServiceURL
+        ? `EDMS reachable. API base ${appSettings.apiCoreServiceURL} requires auth — anonymous bulk search unsupported. ` +
+          `Banner: ${(appSettings.uiBannerLabel ?? "").trim() || "(none)"}.`
+        : `EDMS unreachable from ${BASE}${APP_SETTINGS_PATH}. Adapter will keep retrying each tick.`;
+
+    return { records, nextCursor: null, notes: note };
+  },
+};
