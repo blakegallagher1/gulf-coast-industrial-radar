@@ -1,106 +1,68 @@
 /**
- * EMMA / MSRB (Electronic Municipal Market Access) adapter.
+ * EMMA / MSRB adapter — Industrial Development Bond + IDB-related notices.
  *
  * Schema reference: packages/adapters/src/research/emma-msrb.md
  *
- * Phase 3.1 hardening notes:
- *   - The research artifact did NOT confirm a stable RSS / Atom feed URL
- *     for EMMA new-issue filings.
- *   - The two RSS_URL values below are best-guess paths based on MSRB
- *     documentation patterns. They are flagged as UNCONFIRMED.
- *   - The adapter is written defensively: if either feed returns a non-200
- *     status (including 404), the error is logged and processing continues
- *     with whatever feeds did respond.
- *   - TODO(phase3.1): Verify both RSS feed URLs against a live EMMA session
- *     and update this file once confirmed.
+ * Phase 3.1.1 live-probe results (2026-04-30 — replaces all prior TODOs):
  *
- * Predicate vocabulary:
- *   bond.issuance.new        — new municipal bond / revenue-bond issuance
- *   bond.issuance.refunding  — refunding / refinancing issue
+ *   1. The previously-documented RSS feed URLs
+ *      (`https://emma.msrb.org/Feeds/RecentDisclosure.aspx?state=…`)
+ *      DO NOT EXIST. With a real browser User-Agent every variant returns
+ *      HTTP 404; the path was hallucinated by an earlier research pass.
+ *
+ *   2. EMMA has NO public RSS / JSON / XML feed surface for continuing
+ *      disclosures. The site is ASP.NET WebForms; the public listings
+ *      are on `/MarketActivity/RecentCD` (Recent Continuing Disclosures)
+ *      which is rendered via a server-postback grid that requires JS to
+ *      paginate.
+ *
+ *   3. MSRB sells the data via a paid subscription product:
+ *      https://www.msrb.org/Market-Data-and-Research/Continuing-Disclosure-Subscription
+ *      (Continuing Disclosure Subscription — annual fee, daily / intraday
+ *      machine-readable feeds). This is the only documented path to a
+ *      bulk-machine-readable EMMA feed.
+ *
+ *   4. Practical adapter behaviour for the free-public-only constraint:
+ *      - `implemented: false` — no anonymous machine-readable bulk surface
+ *      - `run()` returns `{ records: [] }` with a clear explanation
+ *      - The Bond Commission agenda adapter (la-bond-commission, future)
+ *        is the higher-leverage path to the same intel for LA-specific
+ *        IDB authorisations — those agendas are public PDFs.
+ *      - Deferred: a Playwright flow against `/MarketActivity/RecentCD`
+ *        could scrape the rendered grid; left out of v0 until needed.
+ *
+ *   5. We still expose the IDB_HINTS + parser shape below so a future
+ *      Playwright-driven implementation can drop in without touching the
+ *      worker / cache wiring.
  */
 
-import type {
-  SourceAdapter,
-  AdapterContext,
-  AdapterResult,
-  AdapterRecord,
-} from "./types";
-import { fetchWithRetry } from "./utils/fetch-with-retry";
-import * as xml2js from "xml2js";
+import type { SourceAdapter, AdapterContext, AdapterResult, AdapterRecord } from "./types";
 
-/**
- * UNCONFIRMED feed URLs — verify before relying on this adapter in prod.
- * The research artifact found no direct evidence of public RSS endpoints.
- */
-const RSS_FEEDS = [
-  "https://emma.msrb.org/rss/new-issues.xml", // UNCONFIRMED
-  "https://emma.msrb.org/rss/primary-market.xml", // UNCONFIRMED
+/** EMMA's public Recent Continuing Disclosures listing — rendered via JS, not a feed. */
+const RECENT_CD_URL = "https://emma.msrb.org/MarketActivity/RecentCD";
+
+/** Strings that mark a continuing disclosure as IDB-relevant when we eventually scrape. */
+export const IDB_HINTS = [
+  "industrial development",
+  "IDB",
+  "project finance",
+  "industrial revenue",
+  "private activity bond",
 ];
 
-interface RssItem {
-  title?: string[];
-  link?: string[];
-  description?: string[];
-  pubDate?: string[];
-  guid?: string[];
-}
-
 export const emmaMsrbAdapter: SourceAdapter = {
-  id: "emma-msrb",
-
-  async fetch(ctx: AdapterContext): Promise<AdapterResult> {
-    const allRecords: AdapterRecord[] = [];
-
-    for (const feedUrl of RSS_FEEDS) {
-      let xmlText: string;
-      try {
-        const res = await fetchWithRetry(feedUrl);
-        if (!res.ok) {
-          ctx.logger?.warn(`emma-msrb feed returned ${res.status}`, {
-            feedUrl,
-          });
-          continue;
-        }
-        xmlText = await res.text();
-      } catch (err) {
-        ctx.logger?.warn("emma-msrb fetch failed", { feedUrl, err });
-        continue;
-      }
-
-      let parsed: { rss?: { channel?: [{ item?: RssItem[] }] } };
-      try {
-        parsed = await xml2js.parseStringPromise(xmlText, {
-          explicitArray: true,
-        });
-      } catch (err) {
-        ctx.logger?.warn("emma-msrb XML parse failed", { feedUrl, err });
-        continue;
-      }
-
-      const items: RssItem[] =
-        parsed?.rss?.channel?.[0]?.item ?? [];
-
-      for (const item of items) {
-        const title = item.title?.[0] ?? "";
-        const link = item.link?.[0] ?? "";
-        const description = item.description?.[0] ?? "";
-        const pubDate = item.pubDate?.[0] ?? "";
-        const guid = item.guid?.[0] ?? link;
-
-        allRecords.push({
-          sourceId: `emma-msrb:${guid}`,
-          predicate: title.toLowerCase().includes("refund")
-            ? "bond.issuance.refunding"
-            : "bond.issuance.new",
-          title,
-          description,
-          url: link,
-          date: pubDate || undefined,
-          fetchedAt: new Date().toISOString(),
-        });
-      }
-    }
-
-    return { records: allRecords };
+  slug: "emma-msrb",
+  family: "FINANCING",
+  implemented: false,
+  async run(_ctx: AdapterContext): Promise<AdapterResult> {
+    const records: AdapterRecord[] = [];
+    const note =
+      `EMMA has no public RSS/JSON feed surface for continuing disclosures. ` +
+      `Recent CD listing is at ${RECENT_CD_URL} but is JS-rendered (ASP.NET ` +
+      `postback grid). Bulk machine-readable access requires the paid MSRB ` +
+      `Continuing Disclosure Subscription. Recommend pivoting to the LA Bond ` +
+      `Commission agenda adapter for the same intelligence on LA IDB ` +
+      `authorisations under the free-data constraint.`;
+    return { records, nextCursor: null, notes: note };
   },
 };
