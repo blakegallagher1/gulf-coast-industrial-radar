@@ -1,131 +1,121 @@
 /**
  * AssemblyValidator unit test — mocks the Perplexity client to verify
- * the two-step validation flow without real API calls.
- *
- * Covers:
- *   1. Happy path: both steps succeed, DB writes are made.
- *   2. Budget exhausted: assertBudget throws → validateAssembly rejects.
- *   3. Structured parse failure: bad JSON from pplx.structured → rejects.
+ * the validator wires both steps and aggregates citations + cost correctly.
  */
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// ─── mocks ────────────────────────────────────────────────────────────────
+//
+// We mock both @gcir/db and ./perplexity-client at the module boundary so the
+// validator runs without a real DB or API key.
+
+vi.mock("@gcir/db", () => {
+  return {
+    prisma: {
+      entity: {
+        findMany: vi.fn(async () => [
+          {
+            id: "e-1",
+            name: "Crescent Industrial Holdings I LLC",
+            registeredAgent: "National Registered Agents Inc (Houston)",
+            mailingAddress: "Houston, TX",
+            formedAt: new Date("2025-09-25"),
+            kind: "LLC",
+          },
+          {
+            id: "e-2",
+            name: "Crescent Industrial Holdings II LLC",
+            registeredAgent: "National Registered Agents Inc (Houston)",
+            mailingAddress: "Houston, TX",
+            formedAt: new Date("2025-09-26"),
+            kind: "LLC",
+          },
+        ]),
+      },
+    },
+  };
+});
+
+vi.mock("../src/perplexity-client", () => {
+  const PerplexityDisabledError = class extends Error {};
+  return {
+    PerplexityDisabledError,
+    structured: vi.fn(async ({ schemaName }: { schemaName: string }) => {
+      if (schemaName === "GcirPublicCoverageCheck") {
+        return {
+          data: {
+            publicCoverageFound: false,
+            summary: "No credible public source explains this assembly yet.",
+            confidence: 0.88,
+            evidenceQuotes: [],
+          },
+          citations: [{ url: "https://example.com/news", title: "Local paper" }],
+          costUsd: 0.012,
+          latencyMs: 320,
+          model: "openai/gpt-5.1",
+          inputTokens: 800,
+          outputTokens: 200,
+          cached: false,
+        };
+      }
+      return {
+        data: {
+          entityName: "Crescent Industrial Holdings I LLC",
+          summary: "Recently-formed LLC; agent is a national filing service. No notable disclosures.",
+          sisterCompanies: ["Crescent Industrial Holdings II LLC"],
+          redFlags: ["Series-LLC pattern"],
+        },
+        citations: [{ url: "https://sos.la.gov/entity/44009122", title: "LA SOS entity" }],
+        costUsd: 0.018,
+        latencyMs: 410,
+        model: "openai/gpt-5.1",
+        inputTokens: 600,
+        outputTokens: 250,
+        cached: false,
+      };
+    }),
+  };
+});
+
+// ─── tests ────────────────────────────────────────────────────────────────
+
 import { validateAssembly } from "../src/assembly-validator";
 
-// ---------------------------------------------------------------------------
-// Mocks
-// ---------------------------------------------------------------------------
-
-vi.mock("@gcir/db", () => ({
-  prisma: {
-    assembly: {
-      findUniqueOrThrow: vi.fn(),
-      update: vi.fn(),
-    },
-    validationResult: {
-      create: vi.fn(),
-    },
-    agentRun: {
-      aggregate: vi.fn().mockResolvedValue({ _sum: { costUsd: 0 } }),
-      create: vi.fn(),
-    },
-    perplexityCache: {
-      findFirst: vi.fn().mockResolvedValue(null),
-      upsert: vi.fn(),
-    },
-  },
-}));
-
-vi.mock("../src/perplexity-client", () => ({
-  structured: vi.fn(),
-  text: vi.fn(),
-  deepResearch: vi.fn(),
-  PPLX_PRESETS: {
-    structured: "gcir-structured-extraction",
-    search: "gcir-web-search",
-    deepResearch: "gcir-deep-research",
-  },
-}));
-
-const { prisma } = await import("@gcir/db");
-const pplx = await import("../src/perplexity-client");
-
-// ---------------------------------------------------------------------------
-// Fixture
-// ---------------------------------------------------------------------------
-
-const ASSEMBLY_FIXTURE = {
-  id: "00000000-0000-0000-0000-000000000001",
-  districtName: "Bayou Industrial Corridor",
-  totalAcreage: 120.5,
-  zoningCodes: ["I-2", "I-3"],
-  utilityStatus: "available",
-  entitlementStatus: "entitled",
-  lastSaleDate: "2024-01-15",
-  ownerCount: 3,
-};
-
-const VALIDATION_RESULT_FIXTURE = {
-  fieldErrors: {},
-  confidence: 0.92,
-  notes: "All fields match county records.",
-};
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+beforeEach(() => {
+  process.env.FEATURE_PERPLEXITY_VALIDATION = "true";
+});
 
 describe("validateAssembly", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    (prisma.assembly.findUniqueOrThrow as ReturnType<typeof vi.fn>)
-      .mockResolvedValue(ASSEMBLY_FIXTURE);
-    (prisma.assembly.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (prisma.validationResult.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (prisma.agentRun.aggregate as ReturnType<typeof vi.fn>)
-      .mockResolvedValue({ _sum: { costUsd: 0 } });
-    (prisma.agentRun.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (prisma.perplexityCache.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-    (prisma.perplexityCache.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  it("runs both steps, aggregates cost, returns supplementary evidence", async () => {
+    const out = await validateAssembly({
+      projectId: "PRJ-test",
+      parishCounty: "Ascension",
+      state: "LA",
+      totalAcres: 1247,
+      windowMonths: 6.5,
+      buyerEntityIds: ["e-1", "e-2"],
+    });
+
+    expect(out.publicCoverageFound).toBe(false);
+    expect(out.publicCheck.summary).toMatch(/no credible public source/i);
+    expect(out.publicCheck.citations.length).toBeGreaterThan(0);
+    expect(out.entityResearch.length).toBe(2);
+    expect(out.entityResearch[0].sisterCompanies.length).toBeGreaterThan(0);
+    expect(out.totalCostUsd).toBeGreaterThan(0);
+    expect(out.modelMix).toContain("openai/gpt-5.1");
   });
 
-  it("happy path: validates and enriches an assembly", async () => {
-    (pplx.structured as ReturnType<typeof vi.fn>)
-      .mockResolvedValue(VALIDATION_RESULT_FIXTURE);
-    (pplx.text as ReturnType<typeof vi.fn>)
-      .mockResolvedValue("Recent permits show warehouse expansion activity.");
-
-    const result = await validateAssembly(ASSEMBLY_FIXTURE.id);
-
-    expect(result.assemblyId).toBe(ASSEMBLY_FIXTURE.id);
-    expect(result.validation.confidence).toBe(0.92);
-    expect(result.enrichmentNote).toContain("warehouse");
-    expect(result.durationMs).toBeGreaterThanOrEqual(0);
-
-    expect(prisma.validationResult.create).toHaveBeenCalledOnce();
-    expect(prisma.assembly.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: ASSEMBLY_FIXTURE.id },
-        data: expect.objectContaining({ validated: true }),
+  it("throws when feature flag is disabled", async () => {
+    process.env.FEATURE_PERPLEXITY_VALIDATION = "false";
+    await expect(
+      validateAssembly({
+        projectId: "PRJ-test",
+        parishCounty: "Ascension",
+        state: "LA",
+        totalAcres: 1000,
+        windowMonths: 4,
+        buyerEntityIds: ["e-1"],
       }),
-    );
-  });
-
-  it("rejects when structured() throws (e.g. budget exhausted)", async () => {
-    (pplx.structured as ReturnType<typeof vi.fn>)
-      .mockRejectedValue(new Error("Perplexity daily budget exhausted"));
-
-    await expect(validateAssembly(ASSEMBLY_FIXTURE.id)).rejects.toThrow(
-      "Perplexity daily budget exhausted",
-    );
-
-    expect(prisma.validationResult.create).not.toHaveBeenCalled();
-    expect(prisma.assembly.update).not.toHaveBeenCalled();
-  });
-
-  it("rejects when structured() returns bad JSON shape", async () => {
-    (pplx.structured as ReturnType<typeof vi.fn>)
-      .mockRejectedValue(new SyntaxError("Unexpected token"));
-
-    await expect(validateAssembly(ASSEMBLY_FIXTURE.id)).rejects.toThrow();
+    ).rejects.toThrow();
   });
 });
