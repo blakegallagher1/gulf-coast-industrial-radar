@@ -1,253 +1,384 @@
 /**
  * QLAD pipeline integration smoke test.
  *
- * Mocks @gcir/db (full Prisma stub), perplexity-client, and openai-client so
- * the test runs without real DB or API credentials.  Covers the happy path and
- * the three most common failure modes:
+ * Mocks @gcir/db (full Prisma surface) and perplexity-client, then calls
+ * tickQlad() with a seeded set of LAND_CONTROL signals matching the Aurora
+ * Steel Donaldsonville fixture (Ascension parish, 1247 total acres, 5 related
+ * Crescent Industrial Holdings LLCs).
  *
- *   1. Happy path — threshold parcel count met, assembly created + validated.
- *   2. Below threshold — no assembly created (early return).
- *   3. Perplexity budget exhausted — validateAssembly throws, pipeline rejects.
- *   4. OpenAI JSON parse failure — structured extraction throws, pipeline rejects.
+ * Two scenarios:
+ *   1. publicCoverageFound = false  → alert created
+ *   2. publicCoverageFound = true   → alert silenced
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { createHash } from "node:crypto";
 
-// ---------------------------------------------------------------------------
-// Mocks (hoisted)
-// ---------------------------------------------------------------------------
+// ─── Shared canned Perplexity responses ───────────────────────────────────
 
-vi.mock("@gcir/db", () => ({
-  prisma: {
-    parcel: {
-      findMany: vi.fn(),
-      count: vi.fn(),
-    },
-    assembly: {
-      create: vi.fn(),
-      findUniqueOrThrow: vi.fn(),
-      update: vi.fn(),
-    },
-    assemblyParcel: {
-      createMany: vi.fn(),
-    },
-    validationResult: {
-      create: vi.fn(),
-    },
-    agentRun: {
-      aggregate: vi.fn().mockResolvedValue({ _sum: { costUsd: 0 } }),
-      create: vi.fn(),
-    },
-    perplexityCache: {
-      findFirst: vi.fn().mockResolvedValue(null),
-      upsert: vi.fn(),
-    },
-  },
-}));
-
-vi.mock("../src/perplexity-client", () => ({
-  structured: vi.fn(),
-  text: vi.fn(),
-  deepResearch: vi.fn(),
-  PPLX_PRESETS: {
-    structured: "gcir-structured-extraction",
-    search: "gcir-web-search",
-    deepResearch: "gcir-deep-research",
-  },
-}));
-
-vi.mock("../src/openai-client", () => ({
-  structured: vi.fn(),
-  text: vi.fn(),
-  zodToJsonSchema: vi.fn().mockReturnValue({}),
-}));
-
-// ---------------------------------------------------------------------------
-// Imports (after mocks)
-// ---------------------------------------------------------------------------
-
-const { prisma } = await import("@gcir/db");
-const pplx = await import("../src/perplexity-client");
-const openai = await import("../src/openai-client");
-
-// Inline a minimal pipeline function so the test is self-contained and
-// doesn't depend on a qlad-pipeline.ts that may not exist yet.
-async function qladPipeline(
-  districtId: string,
-  minParcels = 3,
-): Promise<{ assemblyId: string; validated: boolean } | null> {
-  const parcels = await (prisma.parcel.findMany as ReturnType<typeof vi.fn>)({
-    where: { districtId, available: true },
-  });
-
-  if (parcels.length < minParcels) return null;
-
-  const assembly = await (prisma.assembly.create as ReturnType<typeof vi.fn>)({
-    data: {
-      districtName: `District ${districtId}`,
-      totalAcreage: parcels.reduce(
-        (s: number, p: { acreage: number }) => s + p.acreage,
-        0,
-      ),
-      zoningCodes: [...new Set(parcels.map((p: { zoning: string }) => p.zoning))],
-      utilityStatus: "unknown",
-      entitlementStatus: "unknown",
-      lastSaleDate: null,
-      ownerCount: new Set(parcels.map((p: { ownerId: string }) => p.ownerId)).size,
-      validated: false,
-    },
-  });
-
-  await (prisma.assemblyParcel.createMany as ReturnType<typeof vi.fn>)({
-    data: parcels.map((p: { id: string }) => ({ assemblyId: assembly.id, parcelId: p.id })),
-  });
-
-  // Validation step — calls Perplexity under the hood
-  const assemblyRow = await (prisma.assembly.findUniqueOrThrow as ReturnType<typeof vi.fn>)({
-    where: { id: assembly.id },
-    select: {
-      id: true,
-      districtName: true,
-      totalAcreage: true,
-      zoningCodes: true,
-      utilityStatus: true,
-      entitlementStatus: true,
-      lastSaleDate: true,
-      ownerCount: true,
-    },
-  });
-
-  const validation = await (pplx.structured as ReturnType<typeof vi.fn>)(
-    {}, // schema placeholder — mocked
-    `Validate assembly ${assembly.id}`,
-  );
-
-  const enrichmentNote = await (pplx.text as ReturnType<typeof vi.fn>)(
-    `Enrich assembly ${assembly.id}`,
-  );
-
-  await (prisma.validationResult.create as ReturnType<typeof vi.fn>)({
-    data: {
-      assemblyId: assembly.id,
-      confidence: validation.confidence,
-      fieldErrors: validation.fieldErrors ?? {},
-      notes: validation.notes ?? "",
-      enrichmentNote,
-      durationMs: 0,
-    },
-  });
-
-  await (prisma.assembly.update as ReturnType<typeof vi.fn>)({
-    where: { id: assembly.id },
-    data: { validated: true, validatedAt: new Date() },
-  });
-
-  return { assemblyId: assembly.id, validated: true };
-}
-
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
-const PARCEL_FIXTURE = (i: number) => ({
-  id: `parcel-${i}`,
-  districtId: "district-alpha",
-  acreage: 40,
-  zoning: i % 2 === 0 ? "I-2" : "I-3",
-  ownerId: `owner-${i}`,
-  available: true,
-});
-
-const PARCELS = [PARCEL_FIXTURE(1), PARCEL_FIXTURE(2), PARCEL_FIXTURE(3)];
-
-const ASSEMBLY_STUB = {
-  id: "asm-001",
-  districtName: "District district-alpha",
-  totalAcreage: 120,
-  zoningCodes: ["I-2", "I-3"],
-  utilityStatus: "unknown",
-  entitlementStatus: "unknown",
-  lastSaleDate: null,
-  ownerCount: 3,
+const CANNED_PUBLIC_CHECK = {
+  publicCoverageFound: false,
+  summary: "No credible public source explains this assembly yet.",
+  confidence: 0.88,
+  evidenceQuotes: [] as string[],
 };
 
-const VALIDATION_STUB = { confidence: 0.9, fieldErrors: {}, notes: "OK" };
-const ENRICHMENT_STUB = "Strong permit activity noted in submarket.";
+const CANNED_ENTITY_RESEARCH = {
+  entityName: "Crescent Industrial Holdings I LLC",
+  summary: "Recently-formed LLC; agent is a national filing service. No notable disclosures.",
+  sisterCompanies: [
+    "Crescent Industrial Holdings II LLC",
+    "Crescent Industrial Holdings III LLC",
+    "Crescent Industrial Holdings IV LLC",
+    "Crescent Industrial Holdings V LLC",
+  ],
+  redFlags: ["Series-LLC pattern", "Rapid sequential formations"],
+};
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+const CANNED_VALIDATION_BASE = {
+  publicCheck: { ...CANNED_PUBLIC_CHECK, citations: [{ url: "https://example.com/news", title: "Local paper" }] },
+  entityResearch: [CANNED_ENTITY_RESEARCH],
+  publicCoverageFound: false,
+  totalCostUsd: 0.03,
+  modelMix: ["openai/gpt-5.1"],
+};
 
-describe("qladPipeline", () => {
+// ─── Helpers ──────────────────────────────────────────────────────────────
+
+/** Build a deterministic cluster alert id the same way qlad-evaluate does. */
+function mockAlertId(parish: string, state: string, entityIds: string[]): string {
+  const sorted = [...entityIds].sort().join("|");
+  const sig = createHash("sha256").update(`${state}::${parish}::${sorted}`).digest("hex");
+  return `qlad_${sig.slice(0, 24)}`;
+}
+
+/** 7 LAND_CONTROL signals for Ascension parish — Aurora Steel Donaldsonville fixture. */
+function makeSignals() {
+  const entityIds = ["e-1", "e-2", "e-3", "e-4", "e-5"];
+  const parcelDefs = [
+    { parcelId: "0140002200", acres: 245.7, entityIdx: 0, price: 4800000 },
+    { parcelId: "0140002201", acres: 312.4, entityIdx: 1, price: 6100000 },
+    { parcelId: "0140002202", acres: 189.2, entityIdx: 2, price: 3700000 },
+    { parcelId: "0140002203", acres: 198.8, entityIdx: 3, price: 3900000 },
+    { parcelId: "0140002204", acres: 150.5, entityIdx: 4, price: 2950000 },
+    { parcelId: "0140002205", acres: 100.4, entityIdx: 0, price: 1960000 },
+    { parcelId: "0140002206", acres: 50.0, entityIdx: 1, price: 980000 },
+  ];
+  // Total = 1247.0 ac
+
+  return parcelDefs.map((p, i) => ({
+    id: `sig-${i}`,
+    family: "LAND_CONTROL" as const,
+    observedAt: new Date("2026-04-15T12:00:00Z"),
+    documentDate: new Date("2026-04-10T00:00:00Z"),
+    source: { slug: "ascension-assessor" },
+    payload: {
+      parishCounty: "Ascension",
+      parcelId: p.parcelId,
+      acres: p.acres,
+      buyerEntityId: entityIds[p.entityIdx],
+      pricePerAcre: p.price / p.acres,
+      geometry: {
+        rings: [[
+          [-90.99 - i * 0.01, 30.07],
+          [-90.98 - i * 0.01, 30.07],
+          [-90.98 - i * 0.01, 30.06],
+          [-90.99 - i * 0.01, 30.06],
+          [-90.99 - i * 0.01, 30.07],
+        ]],
+      },
+    },
+  }));
+}
+
+// ─── Shared mock setup ────────────────────────────────────────────────────
+
+/** Upserted alert accumulator — shared across tests via closure reset. */
+let lastUpsertedAlert: Record<string, unknown> | null = null;
+let alertUpsertCallCount = 0;
+
+function buildDbMock(overrides: { publicCoverageFound?: boolean } = {}) {
+  const signals = makeSignals();
+  const publicCoverage = overrides.publicCoverageFound ?? false;
+
+  vi.mock("@gcir/db", () => {
+    const EntityRelationship = {
+      SHARES_REGISTERED_AGENT: "SHARES_REGISTERED_AGENT",
+      SHARES_MAILING_ADDRESS: "SHARES_MAILING_ADDRESS",
+      AFFILIATE_OF: "AFFILIATE_OF",
+      ANALYST_LINKED: "ANALYST_LINKED",
+    };
+    return {
+      EntityRelationship,
+      prisma: {
+        signal: {
+          findMany: vi.fn(async () => signals),
+        },
+        entityLink: {
+          findMany: vi.fn(async () => [
+            // e-1 through e-5 are all linked via shared registered agent
+            { fromId: "e-1", toId: "e-2" },
+            { fromId: "e-2", toId: "e-3" },
+            { fromId: "e-3", toId: "e-4" },
+            { fromId: "e-4", toId: "e-5" },
+          ]),
+        },
+        entity: {
+          findMany: vi.fn(async () =>
+            ["e-1", "e-2", "e-3", "e-4", "e-5"].map((id) => ({
+              id,
+              opacityScore: 0.82,
+            })),
+          ),
+        },
+        project: {
+          findFirst: vi.fn(async () => null),
+          upsert: vi.fn(async () => ({
+            id: "prj-aurora-test",
+            publicId: "PRJ-QLAD-test",
+            score: 72,
+          })),
+        },
+        alert: {
+          upsert: vi.fn(async (args: unknown) => {
+            lastUpsertedAlert = (args as { create: Record<string, unknown> }).create;
+            alertUpsertCallCount++;
+            return {
+              id: (args as { where: { id: string } }).where.id,
+              publicCoverageFound,
+              silencedAt: publicCoverage ? new Date() : null,
+            };
+          }),
+        },
+        recommendedAction: {
+          count: vi.fn(async () => 0),
+          createMany: vi.fn(async () => ({ count: 3 })),
+        },
+      },
+    };
+  });
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────
+
+describe("qlad-pipeline (Deliverable 3 smoke test)", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    (prisma.agentRun.aggregate as ReturnType<typeof vi.fn>)
-      .mockResolvedValue({ _sum: { costUsd: 0 } });
-    (prisma.agentRun.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (prisma.perplexityCache.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-    (prisma.perplexityCache.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    lastUpsertedAlert = null;
+    alertUpsertCallCount = 0;
+    vi.resetModules();
+    process.env.FEATURE_QLAD_LIVE_ALERTING = "true";
+    process.env.FEATURE_PERPLEXITY_VALIDATION = "true";
   });
 
-  it("happy path: creates and validates assembly when threshold met", async () => {
-    (prisma.parcel.findMany as ReturnType<typeof vi.fn>).mockResolvedValue(PARCELS);
-    (prisma.assembly.create as ReturnType<typeof vi.fn>).mockResolvedValue(ASSEMBLY_STUB);
-    (prisma.assemblyParcel.createMany as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (prisma.assembly.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ASSEMBLY_STUB);
-    (pplx.structured as ReturnType<typeof vi.fn>).mockResolvedValue(VALIDATION_STUB);
-    (pplx.text as ReturnType<typeof vi.fn>).mockResolvedValue(ENRICHMENT_STUB);
-    (prisma.validationResult.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (prisma.assembly.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
-
-    const result = await qladPipeline("district-alpha");
-
-    expect(result).not.toBeNull();
-    expect(result?.assemblyId).toBe("asm-001");
-    expect(result?.validated).toBe(true);
-    expect(prisma.assembly.create).toHaveBeenCalledOnce();
-    expect(prisma.validationResult.create).toHaveBeenCalledOnce();
-    expect(prisma.assembly.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "asm-001" },
-        data: expect.objectContaining({ validated: true }),
-      }),
-    );
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.FEATURE_QLAD_LIVE_ALERTING;
+    delete process.env.FEATURE_PERPLEXITY_VALIDATION;
   });
 
-  it("below threshold: returns null without creating assembly", async () => {
-    (prisma.parcel.findMany as ReturnType<typeof vi.fn>).mockResolvedValue(
-      PARCELS.slice(0, 2), // only 2 parcels, below minParcels=3
+  it("Scenario 1: detector triggers, alert created, supplementaryEvidence contains publicCheck + entityResearch", async () => {
+    vi.mock("@gcir/db", () => {
+      const signals = makeSignals();
+      const EntityRelationship = {
+        SHARES_REGISTERED_AGENT: "SHARES_REGISTERED_AGENT",
+        SHARES_MAILING_ADDRESS: "SHARES_MAILING_ADDRESS",
+        AFFILIATE_OF: "AFFILIATE_OF",
+        ANALYST_LINKED: "ANALYST_LINKED",
+      };
+      return {
+        EntityRelationship,
+        prisma: {
+          signal: { findMany: vi.fn(async () => signals) },
+          entityLink: {
+            findMany: vi.fn(async () => [
+              { fromId: "e-1", toId: "e-2" },
+              { fromId: "e-2", toId: "e-3" },
+              { fromId: "e-3", toId: "e-4" },
+              { fromId: "e-4", toId: "e-5" },
+            ]),
+          },
+          entity: {
+            findMany: vi.fn(async () =>
+              ["e-1", "e-2", "e-3", "e-4", "e-5"].map((id) => ({ id, opacityScore: 0.82 })),
+            ),
+          },
+          project: {
+            findFirst: vi.fn(async () => null),
+            upsert: vi.fn(async () => ({ id: "prj-aurora-test", publicId: "PRJ-QLAD-test", score: 72 })),
+          },
+          alert: {
+            upsert: vi.fn(async (args: unknown) => {
+              lastUpsertedAlert = (args as { create: Record<string, unknown> }).create;
+              alertUpsertCallCount++;
+              return { id: "test-alert-id", publicCoverageFound: false, silencedAt: null };
+            }),
+          },
+          recommendedAction: {
+            count: vi.fn(async () => 0),
+            createMany: vi.fn(async () => ({ count: 3 })),
+          },
+        },
+      };
+    });
+
+    vi.mock("../src/perplexity-client", () => {
+      const PerplexityDisabledError = class extends Error {};
+      return {
+        PerplexityDisabledError,
+        structured: vi.fn(async ({ schemaName }: { schemaName: string }) => {
+          if (schemaName === "GcirPublicCoverageCheck") {
+            return {
+              data: { ...CANNED_PUBLIC_CHECK },
+              citations: [{ url: "https://example.com/news", title: "Local paper" }],
+              costUsd: 0.012,
+              latencyMs: 320,
+              model: "openai/gpt-5.1",
+              inputTokens: 800,
+              outputTokens: 200,
+              cached: false,
+            };
+          }
+          return {
+            data: { ...CANNED_ENTITY_RESEARCH },
+            citations: [{ url: "https://sos.la.gov/entity/44009122", title: "LA SOS entity" }],
+            costUsd: 0.018,
+            latencyMs: 410,
+            model: "openai/gpt-5.1",
+            inputTokens: 600,
+            outputTokens: 250,
+            cached: false,
+          };
+        }),
+      };
+    });
+
+    vi.mock("@gcir/agents", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@gcir/agents")>();
+      return {
+        ...actual,
+        validateAssembly: vi.fn(async () => ({
+          ...CANNED_VALIDATION_BASE,
+          publicCoverageFound: false,
+        })),
+        recommendActions: vi.fn(async () => [
+          { type: "OUTREACH", note: "Contact county assessor for ownership chain" },
+        ]),
+        PerplexityDisabledError: class extends Error {},
+      };
+    });
+
+    const { tickQlad } = await import(
+      "../../../apps/worker/src/jobs/qlad-evaluate"
     );
 
-    const result = await qladPipeline("district-alpha");
+    const result = await tickQlad();
 
-    expect(result).toBeNull();
-    expect(prisma.assembly.create).not.toHaveBeenCalled();
+    // Detector should have triggered on ≥1 cluster
+    expect(result.clustersTriggered).toBeGreaterThanOrEqual(1);
+
+    // Alert should be created, not silenced
+    expect(result.alertsCreated).toBe(1);
+    expect(result.alertsSilenced).toBe(0);
+
+    // Verify the upserted alert contains supplementaryEvidence
+    expect(lastUpsertedAlert).not.toBeNull();
+    const evidence = lastUpsertedAlert!.supplementaryEvidence as {
+      publicCheck: typeof CANNED_PUBLIC_CHECK;
+      entityResearch: typeof CANNED_ENTITY_RESEARCH[];
+    } | undefined;
+    expect(evidence).toBeDefined();
+    expect(evidence!.publicCheck).toBeDefined();
+    expect(evidence!.entityResearch).toBeDefined();
+    expect(evidence!.publicCheck.summary).toMatch(/no credible public source/i);
+
+    // Verify tick return shape
+    expect(result).toMatchObject({
+      clustersTriggered: 1,
+      alertsCreated: 1,
+      alertsSilenced: 0,
+    });
   });
 
-  it("rejects when Perplexity budget is exhausted", async () => {
-    (prisma.parcel.findMany as ReturnType<typeof vi.fn>).mockResolvedValue(PARCELS);
-    (prisma.assembly.create as ReturnType<typeof vi.fn>).mockResolvedValue(ASSEMBLY_STUB);
-    (prisma.assemblyParcel.createMany as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (prisma.assembly.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ASSEMBLY_STUB);
-    (pplx.structured as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new Error("Perplexity daily budget exhausted"),
+  it("Scenario 2: validateAssembly returns publicCoverageFound=true → alert silenced", async () => {
+    vi.resetModules();
+
+    vi.mock("@gcir/db", () => {
+      const signals = makeSignals();
+      const EntityRelationship = {
+        SHARES_REGISTERED_AGENT: "SHARES_REGISTERED_AGENT",
+        SHARES_MAILING_ADDRESS: "SHARES_MAILING_ADDRESS",
+        AFFILIATE_OF: "AFFILIATE_OF",
+        ANALYST_LINKED: "ANALYST_LINKED",
+      };
+      return {
+        EntityRelationship,
+        prisma: {
+          signal: { findMany: vi.fn(async () => signals) },
+          entityLink: {
+            findMany: vi.fn(async () => [
+              { fromId: "e-1", toId: "e-2" },
+              { fromId: "e-2", toId: "e-3" },
+              { fromId: "e-3", toId: "e-4" },
+              { fromId: "e-4", toId: "e-5" },
+            ]),
+          },
+          entity: {
+            findMany: vi.fn(async () =>
+              ["e-1", "e-2", "e-3", "e-4", "e-5"].map((id) => ({ id, opacityScore: 0.82 })),
+            ),
+          },
+          project: {
+            findFirst: vi.fn(async () => null),
+            upsert: vi.fn(async () => ({ id: "prj-aurora-test", publicId: "PRJ-QLAD-test", score: 72 })),
+          },
+          alert: {
+            upsert: vi.fn(async (args: unknown) => {
+              lastUpsertedAlert = (args as { create: Record<string, unknown> }).create;
+              alertUpsertCallCount++;
+              return {
+                id: "test-alert-id",
+                publicCoverageFound: true,
+                silencedAt: new Date(),
+              };
+            }),
+          },
+          recommendedAction: {
+            count: vi.fn(async () => 0),
+            createMany: vi.fn(async () => ({ count: 0 })),
+          },
+        },
+      };
+    });
+
+    vi.mock("@gcir/agents", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@gcir/agents")>();
+      return {
+        ...actual,
+        validateAssembly: vi.fn(async () => ({
+          ...CANNED_VALIDATION_BASE,
+          publicCoverageFound: true,
+          publicCheck: {
+            ...CANNED_VALIDATION_BASE.publicCheck,
+            publicCoverageFound: true,
+            summary: "Aurora Steel publicly announced $2.1B direct reduction steelmill in Donaldsonville, LA.",
+            confidence: 0.97,
+          },
+        })),
+        recommendActions: vi.fn(async () => []),
+        PerplexityDisabledError: class extends Error {},
+      };
+    });
+
+    const { tickQlad } = await import(
+      "../../../apps/worker/src/jobs/qlad-evaluate"
     );
 
-    await expect(qladPipeline("district-alpha")).rejects.toThrow(
-      "Perplexity daily budget exhausted",
-    );
-  });
+    const result = await tickQlad();
 
-  it("rejects when OpenAI structured extraction fails", async () => {
-    (prisma.parcel.findMany as ReturnType<typeof vi.fn>).mockResolvedValue(PARCELS);
-    (prisma.assembly.create as ReturnType<typeof vi.fn>).mockResolvedValue(ASSEMBLY_STUB);
-    (prisma.assemblyParcel.createMany as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (prisma.assembly.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ASSEMBLY_STUB);
-    (pplx.structured as ReturnType<typeof vi.fn>).mockResolvedValue(VALIDATION_STUB);
-    (pplx.text as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new SyntaxError("Unexpected token in JSON"),
-    );
+    expect(result.clustersTriggered).toBeGreaterThanOrEqual(1);
 
-    await expect(qladPipeline("district-alpha")).rejects.toThrow();
+    // Alert silenced, not created
+    expect(result.alertsSilenced).toBe(1);
+    expect(result.alertsCreated).toBe(0);
   });
 });
