@@ -1,36 +1,56 @@
 # Gulf Coast Industrial Radar
 
-A private real estate intelligence platform for tracking industrial development signals across the Gulf Coast region.
-
-## What it does
-
-- **Source monitoring** — polls 12 public data sources (LED FastLane, LDEQ EDMS, USACE permits, LPSC filings, LA SOS, parcel records, SEC EDGAR, SAM.gov, EMMA/MSRB, TCEQ)
-- **AI extraction** — 9 AI agents extract structured signals from raw documents
-- **Scoring** — project formation, quiet land assembly detection, and site fit scoring
-- **Radar map** — MapLibre-based interactive map with alert overlays and filter rail
-- **Alert drawer** — 6-tab drawer (Summary / Timeline / Parcels / Entities / Evidence / Actions)
-- **Briefs** — AI-generated project briefs with structured outputs
-
-## Tech stack
-
-| Layer | Technology |
-|-------|------------|
-| Monorepo | pnpm workspaces |
-| DB | PostgreSQL 16 + PostGIS 3 (Prisma 6) |
-| Auth | Clerk v7 |
-| AI | OpenAI GPT-4o |
-| Web | Next.js 15 + Tailwind CSS v4 + shadcn/ui |
-| Map | MapLibre GL JS |
-| Scheduler | croner |
-
-## Quick start
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup instructions.
+> Real-time intelligence platform for Gulf Coast industrial project activity.
 
 ## Architecture
 
-See [AGENTS.md](./AGENTS.md) for a monorepo layout overview and conventions for AI coding assistants.
+```
+gulf-coast-industrial-radar/
+├── apps/
+│   ├── web/          # Next.js 15 dashboard
+│   └── worker/       # Cron job scheduler (node-cron)
+├── packages/
+│   ├── adapters/     # Data source scrapers (14 sources)
+│   ├── agents/       # AI agent clients (OpenAI, Perplexity)
+│   ├── db/           # Prisma schema + migrations
+│   └── scoring/      # Signal scoring + QLAD detector
+└── packages/adapters/src/research/  # Source schema artifacts
+```
 
-## License
+## Phases
 
-Private — all rights reserved.
+| Phase | Description | Status |
+|---|---|---|
+| 1 | Core adapters + DB schema | ✓ Done |
+| 2 | QLAD detector + scoring | ✓ Done |
+| 3 | Perplexity validation + live alerting | ✓ Done |
+
+## Phase 3 Highlights
+
+- **Perplexity Agent API** (`packages/agents/src/perplexity-client.ts`): structured, text, and deepResearch helpers with 7-day DB cache and daily budget cap.
+- **AssemblyValidator** (`packages/agents/src/assembly-validator.ts`): 2-step Perplexity pass for QLAD alerts — public coverage check + entity research.
+- **QLAD live worker** (`apps/worker/src/jobs/qlad-evaluate.ts`): clusters LAND_CONTROL signals every 20 minutes, fires alerts.
+- **14 source research artifacts** (`packages/adapters/src/research/`): documents the current API/HTML schema of every Gulf Coast source.
+- **UI surfacing**: SummaryTab and EvidenceTab now show `publicCoverageFound` banner and supplementary evidence.
+
+## Setup
+
+```bash
+cp .env.example .env
+# Fill in DATABASE_URL, OPENAI_API_KEY, PERPLEXITY_API_KEY
+pnpm install
+pnpm db:migrate
+pnpm dev
+```
+
+## Research Sources
+
+To regenerate source schema research artifacts:
+
+```bash
+pnpm research-sources
+# or for specific sources:
+npx ts-node packages/agents/scripts/research-sources.ts --sources led-fastlane,la-sos
+```
+
+See [`packages/adapters/src/research/`](packages/adapters/src/research/) for current artifacts.

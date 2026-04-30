@@ -1,75 +1,95 @@
 "use client";
 
-import useSWR from "swr";
-import { Link2 } from "lucide-react";
-import { fmtDate } from "@/lib/format";
-
-type Doc = {
-  id: string;
-  url: string;
-  title: string | null;
-  excerpt: string | null;
-  documentDate: string | null;
-  observedAt: string;
-  contentHash: string;
-  source?: { name: string } | null;
+type SupplementaryEvidence = {
+  publicCheck: {
+    publicCoverageFound: boolean;
+    confidence: number;
+    summary: string;
+  };
+  publicCitations: { url: string; title?: string }[];
+  entities: {
+    entityName: string;
+    sector: string;
+    parentCompany?: string;
+    gulfCoastFootprint: boolean;
+    recentActivity: string;
+    confidence: number;
+  }[];
+  totalCostUsd: number;
+  runAt: string;
 };
 
-const fetcher = (u: string) => fetch(u).then((r) => r.json());
+type Props = {
+  supplementaryEvidence: SupplementaryEvidence | null | undefined;
+};
 
-export function EvidenceTab({ projectId }: { projectId: string }) {
-  const { data } = useSWR<{ documents: Doc[] }>(
-    `/api/projects/${projectId}/evidence`,
-    fetcher,
-  );
-  const docs = data?.documents ?? [];
+export function EvidenceTab({ supplementaryEvidence: ev }: Props) {
+  if (!ev) {
+    return (
+      <div className="p-4 text-sm text-gray-500">
+        No supplementary evidence available. Perplexity validation may be disabled or still running.
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <div className="mb-3 flex items-center justify-between text-[12px] text-muted">
-        <span>
-          <strong className="text-ink">{docs.length}</strong> archived items ·{" "}
-          <span className="inline-flex items-center gap-1">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
-            All preserved
-          </span>
-        </span>
-      </div>
-      {docs.length === 0 && (
-        <div className="py-6 text-center text-sm text-muted">No archived evidence yet.</div>
-      )}
-      {docs.map((d) => (
-        <article
-          key={d.id}
-          className="mb-2 rounded-md border border-line bg-white px-3.5 py-3 transition-colors hover:border-stone-300"
-        >
-          <div className="flex items-start justify-between gap-2.5 text-[11px]">
-            <div className="font-semibold uppercase tracking-[0.04em] text-muted">
-              {d.source?.name ?? "Source"}
-            </div>
-            <div className="font-mono text-[10.5px] text-muted-2">
-              {fmtDate(d.documentDate ?? d.observedAt)}
-            </div>
+    <div className="space-y-6 p-4">
+      {/* Entity research */}
+      {ev.entities.length > 0 && (
+        <section>
+          <h3 className="mb-2 text-sm font-semibold text-gray-700">Entity Research</h3>
+          <div className="space-y-3">
+            {ev.entities.map((entity) => (
+              <div key={entity.entityName} className="rounded-lg border border-gray-200 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-gray-800">{entity.entityName}</span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      entity.gulfCoastFootprint
+                        ? "bg-blue-100 text-blue-700"
+                        : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {entity.gulfCoastFootprint ? "Gulf Coast presence" : "No Gulf Coast record"}
+                  </span>
+                </div>
+                <div className="mt-1 text-xs text-gray-500">{entity.sector}</div>
+                {entity.parentCompany && (
+                  <div className="mt-0.5 text-xs text-gray-500">Parent: {entity.parentCompany}</div>
+                )}
+                <p className="mt-2 text-sm text-gray-600">{entity.recentActivity}</p>
+              </div>
+            ))}
           </div>
-          <h4 className="mt-0.5 mb-1.5 text-[13px] font-semibold leading-snug tracking-tight text-ink">
-            {d.title ?? d.url}
-          </h4>
-          {d.excerpt && (
-            <blockquote className="mb-2 border-l-2 border-line pl-2.5 text-[12px] italic leading-relaxed text-ink-3">
-              {d.excerpt}
-            </blockquote>
-          )}
-          <a
-            href={d.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[11px] text-muted hover:text-ink"
-          >
-            <Link2 className="h-3 w-3" />
-            {d.url} · sha {d.contentHash.slice(0, 10)}
-          </a>
-        </article>
-      ))}
+        </section>
+      )}
+
+      {/* Public citations */}
+      {ev.publicCitations.length > 0 && (
+        <section>
+          <h3 className="mb-2 text-sm font-semibold text-gray-700">Sources</h3>
+          <ul className="space-y-1">
+            {ev.publicCitations.map((cite) => (
+              <li key={cite.url}>
+                <a
+                  href={cite.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-600 hover:underline"
+                >
+                  {cite.title ?? cite.url}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Meta */}
+      <section className="text-xs text-gray-400">
+        <div>Validation cost: ${ev.totalCostUsd.toFixed(4)}</div>
+        <div>Run at: {new Date(ev.runAt).toLocaleString()}</div>
+      </section>
     </div>
   );
 }
