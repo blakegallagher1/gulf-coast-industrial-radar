@@ -1,27 +1,25 @@
 {
-  "name": "gcir",
+  "name": "gulf-coast-industrial-radar",
+  "version": "0.3.0",
   "private": true,
-  "version": "0.0.1",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "turbo dev",
-    "build": "turbo build",
-    "lint": "turbo lint",
-    "typecheck": "turbo typecheck",
-    "db:push": "pnpm -F @gcir/db db:push",
-    "db:seed": "pnpm -F @gcir/db db:seed",
-    "db:studio": "pnpm -F @gcir/db db:studio",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,css}\""
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "db:migrate": "turbo run db:migrate",
+    "research-sources": "npx ts-node packages/agents/scripts/research-sources.ts"
   },
   "devDependencies": {
-    "@gcir/tsconfig": "workspace:*",
-    "prettier": "^3.3.3",
-    "prettier-plugin-tailwindcss": "^0.6.11",
     "turbo": "^2.3.3",
     "typescript": "^5.7.3"
   },
+  "packageManager": "pnpm@9.15.4",
   "engines": {
-    "node": ">=20",
-    "pnpm": ">=9"
-  },
-  "packageManager": "pnpm@9.15.2"
+    "node": ">=20"
+  }
 }
