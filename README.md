@@ -1,108 +1,139 @@
 # Gulf Coast Industrial Radar
 
-Detect Gulf Coast industrial demand and site-control opportunities before they
-become public knowledge.
+Detect Gulf Coast industrial demand and site-control formation early enough to
+buy, option, entitle, sell, or avoid land before the market prices it in.
 
-## What It Does
+> **First-pass buyer:** real estate investors and developers, not contractors.
+> **First-pass data:** free / public sources only.
 
-GCIR is a **Quiet Land Assembly Detection (QLAD)** system that:
+The radar pulls from parish assessors, LED, LDEQ, USACE, LPSC, FERC, SAM.gov,
+EMMA, SEC EDGAR, USGS / BTS / EIA infrastructure, and state SOS records.
+Every alert links back to a preserved source document with observed date and
+confidence label.
 
-1. **Ingests** parcel, permit, port-authority, and broker-listing data for
-   Gulf Coast industrial submarkets (Houston Ship Channel, Beaumont, Lake
-   Charles, etc.).
-2. **Detects** emerging land assemblies using spatial clustering and ownership
-   graph analysis.
-3. **Validates** each assembly with a two-step Perplexity Agent API pass
-   (structured field verification + freeform enrichment research).
-4. **Surfaces** opportunities through a Next.js dashboard with map overlays,
-   confidence scores, and historical trends.
-
-## Architecture
+## Repository
 
 ```
 gulf-coast-industrial-radar/
 ├── apps/
-│   └── web/                  Next.js 15 app (dashboard + API routes)
+│   ├── web/                 Next.js 16 (App Router, Tailwind, Clerk, MapLibre)
+│   └── worker/              Cron-driven ingestion + scoring loop
 ├── packages/
-│   ├── agents/               AI agent layer
-│   │   ├── src/
-│   │   │   ├── perplexity-client.ts   Perplexity Agent API (presets, cache, budget)
-│   │   │   ├── assembly-validator.ts  2-step assembly validation agent
-│   │   │   ├── source-schema-researcher.ts  Dev-time schema research utility
-│   │   │   └── openai-client.ts       OpenAI structured-extraction helper
-│   │   ├── scripts/
-│   │   │   └── research-sources.ts   CLI orchestrator for schema research
-│   │   └── test/
-│   │       ├── assembly-validator.test.ts
-│   │       └── qlad-pipeline.test.ts
-│   └── db/                   Prisma schema + generated client
-│       └── prisma/
-│           └── schema.prisma
-└── .env.example
+│   ├── db/                  Prisma 6 + PostGIS schema (16 models)
+│   ├── shared/              Signal taxonomy, geography, constants
+│   ├── adapters/            Free-source ingestion (LED, LDEQ, USACE, …)
+│   ├── agents/              9 AI agents (SourceWatcher → BriefWriter)
+│   └── scoring/             Project formation + Quiet Land Assembly engines
+├── knowledge/               Markdown PRD / spec (single source of truth)
+└── docker-compose.yml       Postgres + PostGIS + Mailhog (dev)
 ```
 
-## Quick Start
+## Quick start
 
 ```bash
-# Install dependencies
+# 1) install dependencies
 pnpm install
 
-# Copy env template
-cp .env.example .env.local
-# Edit .env.local with real credentials
+# 2) start local stack (Postgres + PostGIS + Mailhog)
+docker compose up -d
 
-# Start Postgres (Docker Compose)
-docker compose up -d postgres
+# 3) configure secrets
+cp .env.example .env.local      # then fill DATABASE_URL, CLERK_*, OPENAI_API_KEY
 
-# Run DB migrations
-pnpm --filter @gcir/db db:push
+# 4) database
+pnpm db:generate
+pnpm db:push
+pnpm db:seed                    # 11 backtest projects, 17 sources
 
-# Start dev server
-pnpm dev
+# 5) run
+pnpm dev                        # web + worker in parallel
+# or just one:
+pnpm dev:web
+pnpm dev:worker
 ```
 
-## Perplexity Integration
+App: <http://localhost:3000>
+Mailhog: <http://localhost:8025>
 
-GCIR uses the **Perplexity Agent API** (POST `/v1/agent`) via three presets:
+## What ships in v0
 
-| Preset constant | Preset ID | Use case |
-|---|---|---|
-| `PPLX_PRESETS.structured` | `gcir-structured-extraction` | Validate assembly fields against public records |
-| `PPLX_PRESETS.search` | `gcir-web-search` | Freeform enrichment research with live web search |
-| `PPLX_PRESETS.deepResearch` | `gcir-deep-research` | Multi-step deep research (10 reasoning steps) |
+| Surface             | Status |
+|---------------------|--------|
+| Map-first radar UI  | ✅ live data via `/api/projects` + drawer tabs |
+| Six-tab alert drawer (Summary, Timeline, Parcels, Entities, Evidence, Actions) | ✅ |
+| Weekly investor brief | ✅ list + detail; `BriefWriter` agent generator |
+| Signal taxonomy / source registry references | ✅ |
+| Watchlists scaffold | ✅ list view; create flow ships next |
+| Adapters (12 sources) | ✅ real fetch logic for LED, LDEQ, USACE, LPSC, LA SOS, Ascension/EBR/Calcasieu parcels, SEC EDGAR, SAM.gov, EMMA, TCEQ |
+| 9 agents | ✅ stubs + structured output schemas; OpenAI runtime ready |
+| Scoring | ✅ project formation + Quiet Land Assembly Detector + site-fit |
+| Auth | ✅ Clerk v7 |
+| Cron loop | ✅ `WORKER_CRON_ENABLED=true` to enable |
 
-Configure presets in the [Perplexity dashboard](https://www.perplexity.ai/settings/api/presets)
-and set the corresponding env vars in `.env.local` (see `.env.example`).
+## Phase 3: Perplexity validation + QLAD live alerting
 
-### Budget Guard
+| Capability | Status |
+|---|---|
+| Perplexity Agent API runtime client (`packages/agents/src/perplexity-client.ts`) | ✅ structured + text + deepResearch helpers; 7-day DB cache; daily budget cap |
+| Schema additions (`Alert.supplementaryEvidence`, `publicCoverageFound`, `validationCostUsd`, `PerplexityCache`) | ✅ migration `0030_phase3_perplexity` |
+| Dev-time `SourceSchemaResearcher` + 14 research artifacts | ✅ `pnpm research:sources` regenerates |
+| Adapter URL/path corrections from research (Ascension domain, LED FastLane NextGen, LA SOS path, SEC rate-limit) | ✅ |
+| `AssemblyValidator` — 2-step Perplexity pass (public-check + entity research) | ✅ `validateAssembly()` |
+| `qlad-evaluate` worker job — clusters new LAND_CONTROL signals, runs detector, writes Alerts | ✅ wired in `apps/worker/src/index.ts` (every 20m) |
+| Drawer surfacing — `publicCoverageFound` banner + "Supplementary evidence (Perplexity)" subsection | ✅ `SummaryTab.tsx` + `EvidenceTab.tsx` |
+| Sources page · research-artifact links | ✅ |
+| Tests — Vitest fixtures for QLAD + AssemblyValidator | ✅ `pnpm --filter @gcir/scoring test` and `pnpm --filter @gcir/agents test` |
+| Feature flags | `FEATURE_QLAD_LIVE_ALERTING`, `FEATURE_PERPLEXITY_VALIDATION` (both default off) |
 
-Set `PERPLEXITY_DAILY_BUDGET_USD` to cap daily spend. The client checks
-`AgentRun.costUsd` totals before every call and throws if the cap is reached.
+### How to enable in production
 
-### Cache Layer
+1. Set `PERPLEXITY_API_KEY` (generate at <https://www.perplexity.ai/settings/api>).
+   The same key works for `/v1/agent`, `/chat/completions`, and `/search`.
+   (Note: Perplexity has no `/me` endpoint — Composio's `current_user_info`
+   401 is meaningless; the actual API authenticates fine.)
+2. `FEATURE_QLAD_LIVE_ALERTING=true` and `FEATURE_PERPLEXITY_VALIDATION=true`.
+3. Confirm `WORKER_CRON_ENABLED=true`.
+4. The worker's 20-minute QLAD tick clusters new LAND_CONTROL signals, runs
+   the detector, and (when triggered) calls Perplexity to validate.
+5. Daily budget defaults to $25 (`PERPLEXITY_DAILY_BUDGET_USD`); per-trigger
+   $0.50 cap (`PERPLEXITY_PER_TRIGGER_BUDGET_USD`).
 
-Responses are cached in the `PerplexityCache` table (7-day TTL, keyed by
-`sha256(preset + prompt)`). Target hit rate: >40% on AssemblyValidator calls.
+### Perplexity preset routing
 
-## Running Tests
+Runtime calls use Perplexity Agent API **presets** (verified against
+`docs.perplexity.ai` 2026-04-30):
 
-```bash
-pnpm --filter @gcir/agents test
-```
+| `modelKey` | Preset | Underlying model | Steps | Tools | Use |
+|---|---|---|---|---|---|
+| `fast` | `fast-search` | xai/grok-4-1-fast-non-reasoning | 1 | web_search | Cheap retrieval |
+| `reason` (default) | `pro-search` | openai/gpt-5.1 | 3 | web_search + fetch_url | AssemblyValidator both steps |
+| `deep` | `deep-research` | openai/gpt-5.2 | 10 | web_search + fetch_url | Dev-time source schema research |
+| `frontier` | `advanced-deep-research` | anthropic/claude-opus-4-6 | 10 | web_search + fetch_url | Edge cases |
 
-Tests mock `@gcir/db` and `perplexity-client`, so no real credentials are
-needed.
+Cost is reported per-response in `usage.cost.total_cost`; we record it on the
+`AgentRun` row. The 14-source dev-time research run cost $0.47 total.
 
-## Environment Variables
+## What's next
 
-See `.env.example` for the full list with descriptions. Key vars:
+Per `knowledge/implementation/mvp-build-plan.md`:
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `DATABASE_URL` | Yes | — | Postgres connection string |
-| `OPENAI_API_KEY` | Yes | — | OpenAI API key |
-| `PERPLEXITY_API_KEY` | Yes | — | Perplexity API key |
-| `PERPLEXITY_DAILY_BUDGET_USD` | No | `5.00` | Daily spend cap (USD) |
-| `PPLX_PRESET_STRUCTURED` | No | `gcir-structured-extraction` | Structured-extraction preset ID |
-| `PPLX_PRESET_SEARCH` | No | `gcir-web-search` | Web-search preset ID |
-| `PPLX_PRESET_DEEP_RESEARCH` | No | `gcir-deep-research` | Deep-research preset ID |
+1. **Phase 0 → 1:** verify backtest fidelity for the 10 reference projects
+   (Hyundai Steel, Woodside, Meta/Entergy, LIT, Lake Charles LNG, hydrogen/ammonia,
+   Rio Grande LNG, AM/NS Calvert, MISO South backbone, Port of South Louisiana).
+2. **Phase 2:** entity-resolution improvements (cross-corridor agent matches).
+3. **Phase 3:** Quiet Land Assembly Detector live alerts on new ingestion.
+4. **Phase 4:** map-first UI polish + watchlist creation flow + bulk owner skip-trace.
+5. **Phase 5:** weekly brief delivery (Resend/Postmark) + analyst review workflow.
+6. **Phase 6:** contractor expansion (deferred until investor radar works).
+
+## Provenance promise
+
+Every claim in the radar links back to its raw source document. Each ingestion
+run preserves the source URL, observed date, response snapshot, extraction
+confidence, and an evidence excerpt. Source license and robots/terms review
+status is tracked per source in `Source.termsReview`. No paid aggregators, no
+proprietary databases, no scraping that violates terms.
+
+## License
+
+Private. Gallagher PropCo, 2026.
