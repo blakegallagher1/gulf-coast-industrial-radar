@@ -1,0 +1,8 @@
+{
+  "extends": "@gcir/tsconfig/base",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src"]
+}

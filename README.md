@@ -1,29 +1,36 @@
 # Gulf Coast Industrial Radar
 
-Gulf Coast Industrial Radar is an AI-agent project for detecting industrial project formation before the broader market sees it.
+A private real estate intelligence platform for tracking industrial development signals across the Gulf Coast region.
 
-The first-pass buyer is **real estate investors and developers**, not contractors. The product promise is:
+## What it does
 
-> Detect industrial demand and site-control formation early enough to buy, option, entitle, sell, or avoid land before the market prices it in.
+- **Source monitoring** — polls 12 public data sources (LED FastLane, LDEQ EDMS, USACE permits, LPSC filings, LA SOS, parcel records, SEC EDGAR, SAM.gov, EMMA/MSRB, TCEQ)
+- **AI extraction** — 9 AI agents extract structured signals from raw documents
+- **Scoring** — project formation, quiet land assembly detection, and site fit scoring
+- **Radar map** — MapLibre-based interactive map with alert overlays and filter rail
+- **Alert drawer** — 6-tab drawer (Summary / Timeline / Parcels / Entities / Evidence / Actions)
+- **Briefs** — AI-generated project briefs with structured outputs
 
-The first-pass data constraint is **free/public sources only**. Do not assume paid parcel aggregators, paid deed pulls, GovWin/GovTribe subscriptions, paid satellite feeds, or proprietary bid-alert databases.
+## Tech stack
 
-Start every future work session with [knowledge/INDEX.md](/Users/gallagherpropertycompany/Documents/Gulf Coast Industrial Radar/knowledge/INDEX.md).
+| Layer | Technology |
+|-------|------------|
+| Monorepo | pnpm workspaces |
+| DB | PostgreSQL 16 + PostGIS 3 (Prisma 6) |
+| Auth | Clerk v7 |
+| AI | OpenAI GPT-4o |
+| Web | Next.js 15 + Tailwind CSS v4 + shadcn/ui |
+| Map | MapLibre GL JS |
+| Scheduler | croner |
 
-## Current Wedge
+## Quick start
 
-- Initial user: real estate investors and developers.
-- Launch geography: Gulf Coast industrial corridors, with Baton Rouge / River Parishes as a natural home market.
-- Core signal: quiet industrial land assembly plus corroborating public signals.
-- First product: map-first industrial formation radar and weekly investor brief.
-- Later expansion: contractor/vendor BD intelligence after investor radar works.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup instructions.
 
-## Key Files
+## Architecture
 
-- [knowledge/INDEX.md](/Users/gallagherpropertycompany/Documents/Gulf Coast Industrial Radar/knowledge/INDEX.md) - master knowledge index.
-- [knowledge/project-context.md](/Users/gallagherpropertycompany/Documents/Gulf Coast Industrial Radar/knowledge/project-context.md) - concise executive context.
-- [knowledge/strategy/product-thesis.md](/Users/gallagherpropertycompany/Documents/Gulf Coast Industrial Radar/knowledge/strategy/product-thesis.md) - product thesis and strategic positioning.
-- [knowledge/product/buyer-and-icp.md](/Users/gallagherpropertycompany/Documents/Gulf Coast Industrial Radar/knowledge/product/buyer-and-icp.md) - buyer, ICP, and user priorities.
-- [knowledge/implementation/task-backlog.md](/Users/gallagherpropertycompany/Documents/Gulf Coast Industrial Radar/knowledge/implementation/task-backlog.md) - ordered build backlog.
-- [knowledge/sources/free-source-inventory.md](/Users/gallagherpropertycompany/Documents/Gulf Coast Industrial Radar/knowledge/sources/free-source-inventory.md) - free/public data source inventory.
+See [AGENTS.md](./AGENTS.md) for a monorepo layout overview and conventions for AI coding assistants.
 
+## License
+
+Private — all rights reserved.

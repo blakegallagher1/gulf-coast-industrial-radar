@@ -1,27 +1,52 @@
-# Gulf Coast Industrial Radar Agent Instructions
+# Gulf Coast Industrial Radar — Agent Guide
 
-This project is a markdown-first knowledge base and product planning workspace for **Gulf Coast Industrial Radar**.
+This file tells AI coding assistants (Claude Code, Cursor, Copilot, etc.) how to work effectively in this monorepo.
 
-## Start Here
+## Repo layout
 
-Before answering project questions or changing files, read:
+```
+gcir/
+  apps/
+    web/          Next.js 15 app (Clerk auth, MapLibre, shadcn/ui)
+    worker/       Long-running Node process (croner scheduler)
+  packages/
+    adapters/     Source adapters (fetch → typed signals)
+    agents/       OpenAI-powered AI agents
+    db/           Prisma 6 client + PostGIS schema + seed
+    scoring/      Pure-function scoring engines
+    shared/       Shared types, constants, taxonomy
+```
 
-1. `README.md`
-2. `knowledge/INDEX.md`
-3. The specific linked file relevant to the task
+## Key conventions
 
-## Project Constraints
+- **pnpm workspaces** — run `pnpm -F <package> <cmd>` from the repo root.
+- **TypeScript strict** — all packages use `@gcir/tsconfig/base`.
+- **Prisma 6** — schema lives in `packages/db/prisma/schema.prisma`; always run `pnpm db:push` after changes.
+- **Scoring engines** are pure functions: `(input) => score`. No DB or network calls.
+- **Adapters** implement `BaseAdapter` and export a default instance.
+- **Agents** are thin wrappers around OpenAI structured outputs.
+- **No secrets** in source. Use `.env.local` (gitignored).
 
-- First-pass buyer: real estate investors and developers.
-- First-pass data: free/public sources only.
-- Do not treat contractor/vendor BD workflows as the initial wedge unless the user explicitly redirects.
-- Preserve source provenance. Every factual source claim should keep a URL, observed date when known, and confidence label when possible.
-- Prefer concise markdown files with clear headings and links over one giant document.
+## Common tasks
 
-## Markdown Standards
+| Task | Command |
+|------|---------|
+| Dev (web) | `pnpm dev` |
+| DB migrate | `pnpm db:push` |
+| DB seed | `pnpm db:seed` |
+| Type-check all | `pnpm typecheck` |
+| Lint | `pnpm lint` |
+| Build | `pnpm build` |
 
-- Use semantic headings, short sections, tables where comparison helps, and bullets for operational lists.
-- Use YAML frontmatter for durable metadata on knowledge files.
-- Use relative links inside project markdown unless a final user-facing answer needs absolute local file links.
-- Keep files focused on one concept, workflow, source family, or decision area.
+## Adding a new source adapter
 
+1. Create `packages/adapters/src/<name>.adapter.ts`.
+2. Extend `BaseAdapter` and implement `fetch()`.
+3. Export from `packages/adapters/src/index.ts`.
+4. Add to `packages/agents/src/source-watcher.agent.ts` dispatching.
+
+## Adding a new AI agent
+
+1. Create `packages/agents/src/<name>.agent.ts`.
+2. Use `openai.beta.chat.completions.parse` with a Zod schema.
+3. Export from `packages/agents/src/index.ts`.

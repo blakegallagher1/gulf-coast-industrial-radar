@@ -1,0 +1,276 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+enum SignalType {
+  PERMIT
+  FILING
+  PARCEL
+  REGULATORY
+  PROCUREMENT
+  BOND
+  CORPORATE
+  MEDIA
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ProjectStatus {
+  WATCHING
+  ACTIVE
+  CONFIRMED
+  ARCHIVED
+}
+
+enum WatchlistVisibility {
+  PRIVATE
+  SHARED
+}
+
+model DataSource {
+  id            String      @id @default(cuid())
+  slug          String      @unique
+  name          String
+  url           String
+  enabled       Boolean     @default(true)
+  lastFetchedAt DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  rawSignals    RawSignal[]
+}
+
+model RawSignal {
+  id          String     @id @default(cuid())
+  sourceId    String
+  externalId  String     @unique
+  type        SignalType
+  rawJson     Json
+  fetchedAt   DateTime   @default(now())
+  processedAt DateTime?
+  createdAt   DateTime   @default(now())
+  source      DataSource @relation(fields: [sourceId], references: [id])
+  signals     Signal[]
+}
+
+model Signal {
+  id            String          @id @default(cuid())
+  rawSignalId   String?
+  type          SignalType
+  title         String
+  summary       String?
+  location      Unsupported("geometry(Point, 4326)")?
+  county        String?
+  parish        String?
+  state         String          @default("LA")
+  industry      String?
+  naicsCode     String?
+  investmentUsd BigInt?
+  jobsCreated   Int?
+  confidence    Float           @default(0)
+  metadata      Json            @default("{}")
+  signalDate    DateTime
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  rawSignal     RawSignal?      @relation(fields: [rawSignalId], references: [id])
+  projects      ProjectSignal[]
+  alerts        Alert[]
+  evidence      Evidence[]
+}
+
+model Project {
+  id                     String          @id @default(cuid())
+  name                   String
+  slug                   String          @unique
+  description            String?
+  status                 ProjectStatus   @default(WATCHING)
+  location               Unsupported("geometry(Point, 4326)")?
+  boundingBox            Unsupported("geometry(Polygon, 4326)")?
+  county                 String?
+  parish                 String?
+  state                  String          @default("LA")
+  industry               String?
+  naicsCode              String?
+  estimatedInvestmentUsd BigInt?
+  estimatedJobs          Int?
+  formationScore         Float           @default(0)
+  siteFitScore           Float           @default(0)
+  quietAssemblyScore     Float           @default(0)
+  compositeScore         Float           @default(0)
+  metadata               Json            @default("{}")
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  signals                ProjectSignal[]
+  alerts                 Alert[]
+  briefs                 Brief[]
+  entities               ProjectEntity[]
+  evidence               Evidence[]
+  watchlists             WatchlistProject[]
+}
+
+model ProjectSignal {
+  id             String   @id @default(cuid())
+  projectId      String
+  signalId       String
+  relevanceScore Float    @default(0)
+  createdAt      DateTime @default(now())
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  signal         Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, signalId])
+}
+
+model Alert {
+  id          String        @id @default(cuid())
+  projectId   String?
+  signalId    String?
+  severity    AlertSeverity @default(MEDIUM)
+  title       String
+  body        String
+  location    Unsupported("geometry(Point, 4326)")?
+  readAt      DateTime?
+  dismissedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  project     Project?      @relation(fields: [projectId], references: [id])
+  signal      Signal?       @relation(fields: [signalId], references: [id])
+}
+
+model Brief {
+  id                 String   @id @default(cuid())
+  projectId          String
+  version            Int      @default(1)
+  title              String
+  executiveSummary   String
+  keySignals         Json     @default("[]")
+  risks              Json     @default("[]")
+  opportunities      Json     @default("[]")
+  recommendedActions Json     @default("[]")
+  generatedAt        DateTime @default(now())
+  createdAt          DateTime @default(now())
+  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Parcel {
+  id               String              @id @default(cuid())
+  apn              String
+  county           String
+  state            String              @default("LA")
+  address          String?
+  owner            String?
+  ownerAddress     String?
+  acreage          Float?
+  landValue        BigInt?
+  improvementValue BigInt?
+  totalValue       BigInt?
+  zoning           String?
+  geometry         Unsupported("geometry(Polygon, 4326)")?
+  centroid         Unsupported("geometry(Point, 4326)")?
+  saleDate         DateTime?
+  salePrice        BigInt?
+  metadata         Json                @default("{}")
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  transactions     ParcelTransaction[]
+
+  @@unique([apn, county])
+}
+
+model ParcelTransaction {
+  id             String   @id @default(cuid())
+  parcelId       String
+  buyer          String?
+  seller         String?
+  price          BigInt?
+  saleDate       DateTime
+  instrumentType String?
+  bookPage       String?
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now())
+  parcel         Parcel   @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+}
+
+model Entity {
+  id                 String          @id @default(cuid())
+  name               String
+  type               String
+  state              String?
+  registrationNumber String?
+  registeredAgent    String?
+  incorporatedDate   DateTime?
+  status             String?
+  metadata           Json            @default("{}")
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  projects           ProjectEntity[]
+}
+
+model ProjectEntity {
+  id        String   @id @default(cuid())
+  projectId String
+  entityId  String
+  role      String?
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  entity    Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, entityId])
+}
+
+model Evidence {
+  id        String   @id @default(cuid())
+  signalId  String?
+  projectId String?
+  sourceUrl String
+  title     String
+  excerpt   String?
+  fetchedAt DateTime @default(now())
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now())
+  signal    Signal?  @relation(fields: [signalId], references: [id])
+  project   Project? @relation(fields: [projectId], references: [id])
+}
+
+model Watchlist {
+  id          String              @id @default(cuid())
+  name        String
+  description String?
+  visibility  WatchlistVisibility @default(PRIVATE)
+  userId      String
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  projects    WatchlistProject[]
+}
+
+model WatchlistProject {
+  id          String    @id @default(cuid())
+  watchlistId String
+  projectId   String
+  createdAt   DateTime  @default(now())
+  watchlist   Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([watchlistId, projectId])
+}
+
+model UserPreference {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
+}
