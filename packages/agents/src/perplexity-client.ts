@@ -79,10 +79,21 @@ export const PPLX_MODELS = {
 /** Backwards-compat alias for callers using modelKey. Maps to PPLX_PRESETS. */
 export type PplxModelKey = PplxPresetKey;
 
-const FEATURE_FLAG = process.env.FEATURE_PERPLEXITY_VALIDATION === "true";
-const DAILY_BUDGET = Number(process.env.PERPLEXITY_DAILY_BUDGET_USD ?? "25");
+import {
+  withRetry,
+  checkAgentBudget,
+  extractCitations,
+  estimateCost,
+  type Citation,
+  type Usage,
+} from "./perplexity-runtime";
 
-// ─── public errors ─────────────────────────────────────────────────────────
+export type { Citation } from "./perplexity-runtime";
+
+const FEATURE_FLAG = process.env.FEATURE_PERPLEXITY_VALIDATION === "true";
+const DAILY_BUDGET = Number(process.env.PERPLEXITY_DAILY_BUDGET_USD ?? "50");
+
+// ─── public errors ────────────────────────────────────────────────────
 
 export class PerplexityDisabledError extends Error {
   constructor() {
@@ -101,7 +112,7 @@ export class PerplexityBudgetExceededError extends Error {
   }
 }
 
-// ─── budget guard ──────────────────────────────────────────────────────────
+// ─── budget guard ──────────────────────────────────────────────────
 
 async function assertBudget(): Promise<void> {
   if (!FEATURE_FLAG) throw new PerplexityDisabledError();
@@ -115,7 +126,7 @@ async function assertBudget(): Promise<void> {
   if (spent >= DAILY_BUDGET) throw new PerplexityBudgetExceededError(spent, DAILY_BUDGET);
 }
 
-// ─── caching ───────────────────────────────────────────────────────────────
+// ─── caching ─────────────────────────────────────────────────────────────
 
 function cacheKey(parts: unknown[]): string {
   return createHash("sha256").update(JSON.stringify(parts)).digest("hex");
@@ -137,7 +148,7 @@ async function writeCache(key: string, model: string, response: unknown, ttlDays
   });
 }
 
-// ─── core helpers ──────────────────────────────────────────────────────────
+// ─── core helpers ──────────────────────────────────────────────────
 
 export type PplxStructuredArgs<T> = {
   agent: string;                       // e.g. "AssemblyValidator.publicCheck"
@@ -146,7 +157,16 @@ export type PplxStructuredArgs<T> = {
   schema: ZodSchema<T, ZodTypeDef, unknown>;
   schemaName: string;
   modelKey?: PplxModelKey;
-  /** Built-in tools the agent may use. */
+  /**
+   * Raw model id — bypasses preset routing entirely. Use for cheap structured
+   * extraction over local data where web search is unnecessary. When set,
+   * `modelKey` and `tools` are ignored; the model receives only the system+user
+   * messages and produces strict JSON.
+   *
+   * Accepts either a key from PPLX_MODELS or a literal model id string.
+   */
+  rawModel?: keyof typeof PPLX_MODELS | (string & {});
+  /** Built-in tools the agent may use. Ignored when `rawModel` is set. */
   tools?: ("web_search" | "url_fetch")[];
   /** 0..1 temperature. */
   temperature?: number;
@@ -165,20 +185,26 @@ export type PplxResult<T> = {
   cached: boolean;
 };
 
-export type Citation = {
-  url: string;
-  title?: string;
-  snippet?: string;
-};
-
-/** Strict-JSON structured agent call. Defaults to the pro-search preset
- *  (openai/gpt-5.1, web_search + fetch_url, 3 reasoning steps). */
+/** Strict-JSON structured agent call.
+ *
+ * Routing modes:
+ *   - Default: uses the pro-search preset (openai/gpt-5.1 + web_search + fetch_url, 3 steps)
+ *   - `modelKey: "fast" | "reason" | "deep" | "frontier"` selects a different preset
+ *   - `rawModel: "openai/gpt-5.4-mini"` (or other PPLX_MODELS key) bypasses presets
+ *     entirely — no tools, single-turn, cheapest path. Use when you don't need
+ *     web search or multi-step reasoning. */
 export async function structured<T>(args: PplxStructuredArgs<T>): Promise<PplxResult<T>> {
   const start = Date.now();
-  // modelKey selects a Perplexity preset (NOT a raw model id).
-  const preset = PPLX_PRESETS[args.modelKey ?? "reason"];
+  const usingRawModel = args.rawModel != null;
+  const preset = usingRawModel
+    ? undefined
+    : PPLX_PRESETS[args.modelKey ?? "reason"];
+  const rawModelId = usingRawModel
+    ? (PPLX_MODELS[args.rawModel as keyof typeof PPLX_MODELS] ?? args.rawModel) as string
+    : undefined;
+  const routingKey = preset ?? rawModelId ?? "unknown";
 
-  const key = cacheKey([preset, args.schemaName, args.systemPrompt, args.user]);
+  const key = cacheKey([routingKey, args.schemaName, args.systemPrompt, args.user]);
   const hit = await readCache<{ data: unknown; citations: Citation[]; usage: unknown; model: string }>(key);
   if (hit) {
     const parsed = args.schema.safeParse(hit.data);
@@ -197,17 +223,25 @@ export async function structured<T>(args: PplxStructuredArgs<T>): Promise<PplxRe
   }
 
   await assertBudget();
+  await checkAgentBudget(args.agent.split(".")[0] ?? args.agent);
 
   // The Agent API "fast-search" preset does NOT support fetch_url; only
-  // web_search. Other presets support both. Filter accordingly.
-  const allowsFetchUrl = preset !== "fast-search";
-  const requestedTools = args.tools ?? ["web_search"];
-  const tools = requestedTools
-    .filter((t) => allowsFetchUrl || t !== "url_fetch")
-    .map((t) => ({ type: t === "url_fetch" ? "fetch_url" : t }));
+  // web_search. Other presets support both. Filter accordingly. Raw-model
+  // calls skip tools entirely — they're for pure structured extraction.
+  let tools: { type: string }[];
+  if (usingRawModel) {
+    tools = [];
+  } else {
+    const allowsFetchUrl = preset !== "fast-search";
+    const requestedTools = args.tools ?? ["web_search"];
+    tools = requestedTools
+      .filter((t) => allowsFetchUrl || t !== "url_fetch")
+      .map((t) => ({ type: t === "url_fetch" ? "fetch_url" : t }));
+  }
 
   const resp = await callAgent({
-    preset,
+    ...(preset ? { preset } : {}),
+    ...(rawModelId ? { model: rawModelId } : {}),
     input: [
       { role: "system", content: args.systemPrompt },
       { role: "user", content: args.user },
@@ -232,7 +266,7 @@ export async function structured<T>(args: PplxStructuredArgs<T>): Promise<PplxRe
   }
 
   const citations = extractCitations(resp);
-  const respModel = (resp.model ?? preset) as string;
+  const respModel = (resp.model ?? routingKey) as string;
   const costUsd = resp.cost_usd ?? estimateCost(respModel, resp.usage);
   const latencyMs = Date.now() - start;
 
@@ -243,7 +277,7 @@ export async function structured<T>(args: PplxStructuredArgs<T>): Promise<PplxRe
       startedAt: new Date(start),
       finishedAt: new Date(),
       status: "ok",
-      outputJson: { citations, preset } as never,
+      outputJson: { citations, routing: usingRawModel ? { rawModel: rawModelId } : { preset } } as never,
       costUsd,
       latencyMs,
     },
@@ -316,7 +350,7 @@ export async function text(args: PplxTextArgs): Promise<{
     },
   });
 
-  return { text: out, citations, costUsd, latencyMs, model: respModel, cached: false };
+  return { text: out, citations, costUsd, latencyMs: latencyMs, model: respModel, cached: false };
 }
 
 /** Convenience for dev-time deep-research jobs (deep-research preset). */
@@ -344,80 +378,21 @@ type AgentResponse = {
   model?: string;
   output_text?: string;
   output?: unknown[];
-  /** Server-reported usage (Perplexity reports input_tokens / output_tokens). */
-  usage?: {
-    input_tokens?: number;
-    output_tokens?: number;
-    total_tokens?: number;
-    cost?: { currency?: string; input_cost?: number; output_cost?: number; total_cost?: number };
-  };
+  usage?: Usage;
   cost_usd?: number;
 };
 
 async function callAgent(args: AgentInput): Promise<AgentResponse> {
   // Agent API accepts EITHER model or preset (or both, with preset providing
   // defaults that explicit fields override). https://docs.perplexity.ai/docs/agent-api/presets
-  return (await client.responses.create(args as never)) as unknown as AgentResponse;
-}
-
-function extractCitations(resp: AgentResponse): Citation[] {
-  const output = resp.output ?? [];
-  const cites: Citation[] = [];
-  for (const item of output as Array<Record<string, unknown>>) {
-    const content = (item as { content?: unknown[] }).content ?? [];
-    for (const c of content as Array<Record<string, unknown>>) {
-      const annotations = (c as { annotations?: unknown[] }).annotations ?? [];
-      for (const a of annotations as Array<{
-        type?: string;
-        url?: string;
-        title?: string;
-        quote?: string;
-        snippet?: string;
-      }>) {
-        if (a.url) cites.push({ url: a.url, title: a.title, snippet: a.quote ?? a.snippet });
-      }
-    }
-  }
-  return cites;
-}
-
-/**
- * Estimate cost when the server doesn't report it (rare — Perplexity normally
- * returns usage.cost.total_cost). Pricing source:
- *   https://docs.perplexity.ai/docs/agent-api/models  (April 2026)
- */
-function estimateCost(
-  model: string,
-  usage?: AgentResponse["usage"],
-): number {
-  if (!usage) return 0;
-  // Server-reported total cost wins.
-  if (usage.cost?.total_cost != null) return usage.cost.total_cost;
-  const inT = usage.input_tokens ?? 0;
-  const outT = usage.output_tokens ?? 0;
-
-  // $/1M tokens — verify against docs/agent-api/models when adding new models.
-  const RATES: Array<[RegExp, { in: number; out: number }]> = [
-    [/^perplexity\/sonar/,                 { in: 0.25, out: 2.50 }],
-    [/^anthropic\/claude-opus-4(-7|-6|-5)/,{ in: 5,    out: 25   }],
-    [/^anthropic\/claude-sonnet-4/,        { in: 3,    out: 15   }],
-    [/^anthropic\/claude-haiku-4/,         { in: 1,    out: 5    }],
-    [/^openai\/gpt-5\.5/,                  { in: 5,    out: 30   }],
-    [/^openai\/gpt-5\.4-mini/,             { in: 0.75, out: 4.50 }],
-    [/^openai\/gpt-5\.4-nano/,             { in: 0.20, out: 1.25 }],
-    [/^openai\/gpt-5\.4/,                  { in: 2.50, out: 15   }],
-    [/^openai\/gpt-5\.2/,                  { in: 1.75, out: 14   }],
-    [/^openai\/gpt-5\.1/,                  { in: 1.25, out: 10   }],
-    [/^openai\/gpt-5-mini/,                { in: 0.25, out: 2    }],
-    [/^google\/gemini-3\.1-pro/,           { in: 2,    out: 12   }],
-    [/^google\/gemini-3-flash/,            { in: 0.50, out: 3    }],
-    [/^xai\/grok-4-1-fast/,                { in: 0.50, out: 1.50 }],
-    [/^xai\/grok-4\.20-reasoning/,         { in: 2,    out: 6    }],
-    [/^nvidia\/nemotron/,                  { in: 0.25, out: 2.50 }],
-  ];
-  const match = RATES.find(([re]) => re.test(model));
-  const rate = match ? match[1] : { in: 1, out: 3 };
-  return (inT * rate.in + outT * rate.out) / 1_000_000;
+  //
+  // Wrapped in withRetry so 429/5xx + network blips back off instead of
+  // failing the cron tick. The hard daily budget cap remains the safety net.
+  const label = args.preset ?? args.model ?? "agent";
+  return withRetry(
+    async () => (await client.responses.create(args as never)) as unknown as AgentResponse,
+    label,
+  );
 }
 
 export const _z = z; // re-export for callers
