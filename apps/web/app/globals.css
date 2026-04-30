@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Match the Phase 1 prototype's design language exactly. */
+@layer base {
+  :root {
+    --header-h: 54px;
+    --status-h: 32px;
+    --rail-w: 268px;
+    --drawer-w: 480px;
+  }
+
+  html, body { height: 100%; }
+  body {
+    @apply bg-bg text-ink antialiased;
+    font-feature-settings: "cv11", "ss01", "ss03";
+  }
+  ::selection { background: rgb(16 163 127 / 0.08); }
+}
+
+@layer components {
+  /* topbar primitives */
+  .gcir-topnav-btn {
+    @apply rounded-md px-3 py-1.5 text-[13px] font-medium text-ink-3 transition-colors hover:bg-bg-3 hover:text-ink;
+  }
+  .gcir-topnav-btn[data-active="true"] {
+    @apply bg-bg-3 text-ink;
+  }
+
+  .gcir-pill {
+    @apply inline-flex h-[30px] items-center gap-1.5 rounded-full border border-line bg-bg px-2.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-bg-2;
+  }
+
+  .gcir-icon-btn {
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-bg-3 hover:text-ink;
+  }
+
+  .gcir-btn {
+    @apply inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-white px-3 text-[12.5px] font-medium text-ink-2 transition-all hover:border-stone-300 hover:bg-bg-2;
+  }
+  .gcir-btn-primary {
+    @apply gcir-btn border-ink bg-ink text-white shadow-sm hover:bg-black;
+  }
+
+  .gcir-tab {
+    @apply whitespace-nowrap border-b-2 border-transparent py-2.5 text-[13px] font-medium text-muted transition-colors hover:text-ink-2;
+    margin-right: 18px;
+  }
+  .gcir-tab[data-active="true"] {
+    @apply border-ink font-semibold text-ink;
+  }
+
+  .gcir-rail-row {
+    @apply flex cursor-pointer select-none items-center justify-between rounded-md px-2 py-1.5 text-[13px] text-ink-2 transition-colors hover:bg-bg-3;
+  }
+  .gcir-rail-row[data-active="true"] {
+    @apply border border-line bg-white shadow-sm;
+  }
+
+  .gcir-section-h {
+    @apply mb-2.5 mt-5 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.06em] text-muted;
+  }
+
+  .gcir-tag {
+    @apply inline-flex items-center gap-1 rounded border border-line-2 bg-bg-3 px-1.5 py-px text-[10.5px] font-medium leading-relaxed text-muted;
+  }
+  .gcir-tag .dot {
+    @apply h-[5px] w-[5px] rounded-full;
+  }
+
+  .gcir-score-chip {
+    @apply rounded-md px-1.5 py-px font-mono text-[11.5px] font-semibold;
+  }
+
+  .gcir-conf-pill {
+    @apply inline-flex items-center gap-1 rounded border border-line-2 bg-bg-3 px-1.5 py-px text-[10.5px] font-medium text-muted;
+  }
+}
+
+/* hide scrollbar utility */
+.scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #d6d3d1;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
+}
+
+/* maplibre overrides */
+.maplibregl-ctrl-attrib { font-size: 10px !important; background: rgb(255 255 255 / 0.85) !important; }
