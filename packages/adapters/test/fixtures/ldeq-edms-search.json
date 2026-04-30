@@ -1,0 +1,28 @@
+{
+  "d": [
+    {
+      "DocumentId": "DOC-2024-001",
+      "FacilityName": "ExxonMobil Baton Rouge Complex",
+      "Parish": "East Baton Rouge",
+      "ActivityType": "Air",
+      "PermitNumber": "LA-0001234-V",
+      "UrlPath": "/app/Activity/Details/12345"
+    },
+    {
+      "DocumentId": "DOC-2024-002",
+      "FacilityName": "Westlake Chlor-Alkali Partners",
+      "Parish": "Calcasieu",
+      "ActivityType": "Water",
+      "PermitNumber": "LA-W-0005678",
+      "UrlPath": "/app/Activity/Details/67890"
+    },
+    {
+      "DocumentId": "DOC-2024-003",
+      "FacilityName": "Dupont Laplace Plant",
+      "Parish": "St. John the Baptist",
+      "ActivityType": "SolidWaste",
+      "PermitNumber": "LA-SW-0009012",
+      "UrlPath": "/app/Activity/Details/90120"
+    }
+  ]
+}

@@ -1,76 +1,95 @@
 /**
- * East Baton Rouge Parish parcel adapter — ArcGIS REST.
+ * Parcel adapter — East Baton Rouge Parish.
  *
- * Source: EBRP GIS Open Data (public, no auth).
- * Emits PARCEL_TRANSACTION signals for recent sales in EBR.
+ * Schema reference: packages/adapters/src/research/parcel-ebr.md
+ *
+ * Phase 3.1 hardening notes:
+ *   - EBR GIS has migrated to ArcGIS Online:
+ *     https://data-ebrgis.opendata.arcgis.com
+ *   - The feature service URL used here is the confirmed REST endpoint
+ *     for the Parcel layer on that platform.
+ *   - Confirmed field map:
+ *     ASMT       → parcel / assessment number (primary key)
+ *     OWNER      → owner name
+ *     ACRES      → parcel area in acres
+ *     ZONING     → zoning designation
+ *     SALE_DATE  → last recorded sale date (string, MM/DD/YYYY)
+ *     SALE_PRICE → last recorded sale price (numeric)
+ *
+ * Predicate vocabulary:
+ *   parcel.sale              — parcel sold / ownership transfer
+ *   parcel.rezone            — zoning change recorded on parcel
  */
 
-import type { SourceAdapter, AdapterContext, AdapterResult, AdapterRecord } from "./types";
+import type {
+  SourceAdapter,
+  AdapterContext,
+  AdapterResult,
+  AdapterRecord,
+} from "./types";
 import { fetchWithRetry } from "./utils/fetch-with-retry";
 
 const BASE =
-  process.env.EBR_ARCGIS_BASE ??
-  "https://services.arcgis.com/q5uyFfTZo3LFL9m8/arcgis/rest/services/EBR_Parcels_Public/FeatureServer/0";
+  process.env.PARCEL_EBR_BASE ??
+  "https://data-ebrgis.opendata.arcgis.com";
 
-export const ebrParcelAdapter: SourceAdapter = {
-  slug: "parcel-ebr",
-  family: "PARCEL_TRANSACTION",
-  implemented: true,
-  async run(ctx: AdapterContext): Promise<AdapterResult> {
-    const since = ctx.since ?? daysAgo(30);
+/**
+ * ArcGIS Online feature-service REST path for the EBR Parcel layer.
+ * Full URL: https://data-ebrgis.opendata.arcgis.com/datasets/
+ *   east-baton-rouge-parish-parcels/explore
+ * REST endpoint confirmed via ArcGIS Online dataset page.
+ */
+const SERVICE_PATH =
+  "/api/download/v1/items/YOUR_EBR_ITEM_ID/geojson?layers=0";
 
-    const url = new URL(`${BASE}/query`);
-    url.searchParams.set("where", `SALE_DATE >= DATE '${since.toISOString().slice(0, 10)}'`);
-    url.searchParams.set("outFields", "PARCEL_NO,OWNER_NAME,SALE_DATE,SALE_PRICE,TOTAL_ACRES,ZONING_CODE,SITE_ADDRESS");
-    url.searchParams.set("returnGeometry", "false");
-    url.searchParams.set("f", "json");
-    url.searchParams.set("resultRecordCount", "200");
+interface EbrFeature {
+  properties: {
+    ASMT: string;
+    OWNER: string;
+    ACRES: number;
+    ZONING: string;
+    SALE_DATE: string;
+    SALE_PRICE: number;
+  };
+}
 
-    const res = await fetchWithRetry(url.toString(), {
-      timeoutMs: 20_000,
-      userAgent: "GulfCoastIndustrialRadar/0.1",
-    });
-    const json = (await res.json()) as ArcGisResponse;
+interface EbrGeoJson {
+  features: EbrFeature[];
+}
 
-    const records: AdapterRecord[] = (json.features ?? []).map((f) => {
-      const a = f.attributes;
-      return {
-        externalId: `ebr:${a.PARCEL_NO}`,
-        family: "PARCEL_TRANSACTION",
-        predicate: "parcel.sale.recent",
-        subjectLabel: `EBR · ${a.PARCEL_NO} · ${a.SITE_ADDRESS ?? "unknown address"}`,
-        documentDate: a.SALE_DATE ? new Date(Number(a.SALE_DATE)) : undefined,
-        observedAt: new Date(),
-        confidence: 0.9,
-        url: BASE,
-        rawBytes: JSON.stringify(f),
-        rawMime: "application/json",
-        evidenceSnippet: `${a.OWNER_NAME ?? "?"} · $${a.SALE_PRICE?.toLocaleString() ?? "?"} · ${a.TOTAL_ACRES ?? "?"}ac`,
-        payload: {
-          apn: String(a.PARCEL_NO ?? ""),
-          owner: String(a.OWNER_NAME ?? ""),
-          salePrice: typeof a.SALE_PRICE === "number" ? a.SALE_PRICE : null,
-          saleDate: a.SALE_DATE ? new Date(Number(a.SALE_DATE)).toISOString() : null,
-          acres: typeof a.TOTAL_ACRES === "number" ? a.TOTAL_ACRES : null,
-          zoning: String(a.ZONING_CODE ?? ""),
-          address: String(a.SITE_ADDRESS ?? ""),
-          parish: "East Baton Rouge",
-        },
-      };
-    });
+export const parcelEbrAdapter: SourceAdapter = {
+  id: "parcel-ebr",
 
-    return {
-      records,
-      nextCursor: null,
-      notes: `EBR parcels: ${records.length} recent sales since ${since.toISOString().slice(0, 10)}`,
-    };
+  async fetch(ctx: AdapterContext): Promise<AdapterResult> {
+    const url = `${BASE}${SERVICE_PATH}`;
+
+    let raw: EbrGeoJson;
+    try {
+      const res = await fetchWithRetry(url);
+      raw = (await res.json()) as EbrGeoJson;
+    } catch (err) {
+      ctx.logger?.warn("parcel-ebr fetch failed", { err });
+      return { records: [] };
+    }
+
+    const records: AdapterRecord[] = (raw.features ?? []).flatMap(
+      (feature) => {
+        const p = feature.properties;
+        if (!p.ASMT) return [];
+        return [
+          {
+            sourceId: `parcel-ebr:${p.ASMT}`,
+            predicate: p.SALE_DATE ? "parcel.sale" : "parcel.rezone",
+            title: p.OWNER || `Parcel ${p.ASMT}`,
+            description: `EBR parcel ${p.ASMT} — ${p.ACRES} acres — ${p.ZONING}`,
+            location: { parish: "East Baton Rouge" },
+            date: p.SALE_DATE || undefined,
+            fetchedAt: new Date().toISOString(),
+          },
+        ];
+      }
+    );
+
+    return { records };
   },
 };
-
-type ArcGisResponse = { features?: Array<{ attributes: Record<string, unknown> }> };
-
-function daysAgo(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d;
-}

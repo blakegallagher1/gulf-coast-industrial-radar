@@ -1,13 +1,29 @@
 /**
  * LDEQ EDMS adapter — Louisiana Department of Environmental Quality.
  *
- * Source: https://edms.deq.louisiana.gov
- * The EDMS portal exposes search-by-document type. We pull recent air permit
- * Notices of Intent (NOIs) and water/wetlands public notices.
+ * Schema reference: packages/adapters/src/research/ldeq-edms.md
+ *
+ * Phase 3.1 hardening notes:
+ *   - The research artifact confirms the live entry point is
+ *     https://edms.deq.louisiana.gov (portal access via
+ *     https://www.deq.louisiana.gov/page/edms). No REST API was documented.
+ *   - The SEARCH_PATH "/app/svcs/Search.svc/SearchAdvanced" is an inferred
+ *     internal AJAX path. The research artifact found no evidence of this
+ *     endpoint; it may not exist or may require session auth.
+ *   - TODO(phase3.1): Confirm whether SearchAdvanced endpoint is publicly
+ *     reachable and, if not, pivot to scraping the EDMS HTML search results.
+ *     The AI number (Agency Interest number) is the primary query key on the
+ *     public HTML interface (no query params documented for bulk extraction).
+ *   - TODO(phase3.1): Investigate TEMPO (https://tempo.deq.louisiana.gov)
+ *     as a potentially scrapable structured-permit backend.
+ *   - Field names (DocumentId, FacilityName, Parish, ActivityType,
+ *     PermitNumber, UrlPath) are plausible based on doc-metadata context
+ *     but are NOT confirmed by the research artifact. Do not rename without
+ *     a live response sample.
  *
  * Predicate vocabulary:
  *   permit.air.NOI           — air-quality NOI (Class I/II/III)
- *   permit.water.NPDES       — NPDES water-discharge permit
+ *   permit.water.NPDES       — NPDES water-discharge permit (LPDES / NPDES)
  *   permit.wetlands.404      — Section 404 wetlands fill
  *   permit.solid.waste       — solid waste / Type II
  */
@@ -22,104 +38,93 @@ import { fetchWithRetry } from "./utils/fetch-with-retry";
 
 const BASE = process.env.LDEQ_EDMS_BASE ?? "https://edms.deq.louisiana.gov";
 
-/** EDMS public-search endpoint. Returns JSON when accessed via the AJAX path. */
+/**
+ * EDMS public-search endpoint.
+ * TODO(phase3.1): This path is inferred — not confirmed by the research
+ * artifact. If requests return 404 / redirect, replace with HTML-scrape
+ * of https://edms.deq.louisiana.gov/app/Activity/Search.
+ */
 const SEARCH_PATH = "/app/svcs/Search.svc/SearchAdvanced";
 
-type Cursor = { page: number };
+// Activity types that map to permitting actions we care about.
+const PERMIT_ACTIVITY_TYPES = new Set([
+  "Air",
+  "Water",
+  "WasteWater",
+  "SolidWaste",
+  "Wetlands",
+]);
+
+interface EdmsSearchResponse {
+  d: EdmsDocument[];
+}
+
+interface EdmsDocument {
+  DocumentId: string;
+  FacilityName: string;
+  Parish: string;
+  ActivityType: string;
+  PermitNumber: string;
+  UrlPath: string;
+}
 
 export const ldeqEdmsAdapter: SourceAdapter = {
-  slug: "ldeq-edms",
-  family: "ENVIRONMENTAL_PERMIT",
-  implemented: true,
-  async run(ctx: AdapterContext): Promise<AdapterResult> {
-    const cursor = (ctx.cursor as Cursor | undefined) ?? { page: 1 };
-    const since = ctx.since ?? daysAgo(30);
+  id: "ldeq-edms",
 
-    const body = {
-      DocumentTypes: ["AQ", "WQ", "SW"],
-      DateFrom: since.toISOString().slice(0, 10),
-      DateTo: new Date().toISOString().slice(0, 10),
-      Page: cursor.page,
-      PageSize: 50,
-    };
-
-    const res = await fetchWithRetry(BASE + SEARCH_PATH, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(body),
-      timeoutMs: 30_000,
-      userAgent: "GulfCoastIndustrialRadar/0.1 contact@gallagherpropco.com",
+  async fetch(ctx: AdapterContext): Promise<AdapterResult> {
+    const url = `${BASE}${SEARCH_PATH}`;
+    const body = JSON.stringify({
+      Parish: ctx.parish ?? "",
+      ActivityType: "",
+      StatusCode: "PENDING",
     });
 
-    const json = (await res.json()) as EdmsResponse;
-    const items = json.Results ?? [];
+    let raw: EdmsSearchResponse;
+    try {
+      const res = await fetchWithRetry(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      raw = (await res.json()) as EdmsSearchResponse;
+    } catch (err) {
+      ctx.logger?.warn("ldeq-edms fetch failed", { err });
+      return { records: [] };
+    }
 
-    const records: AdapterRecord[] = items.map((it) => {
-      const predicate = predicateFor(it);
-      return {
-        externalId: it.DocumentId,
-        family: "ENVIRONMENTAL_PERMIT",
-        predicate,
-        subjectLabel: `${it.FacilityName ?? "Facility"} · ${it.ActivityType ?? predicate}`,
-        documentDate: it.DocumentDate ? new Date(it.DocumentDate) : undefined,
-        observedAt: new Date(),
-        confidence: 0.94,
-        url: BASE + (it.UrlPath ?? "/app/doc/" + it.DocumentId),
-        rawBytes: JSON.stringify(it),
-        rawMime: "application/json",
-        evidenceSnippet: it.Title?.slice(0, 280),
-        payload: {
-          edmsDocumentId: it.DocumentId,
-          facilityName: it.FacilityName ?? null,
-          parish: it.Parish ?? null,
-          activityType: it.ActivityType ?? null,
-          permitNumber: it.PermitNumber ?? null,
+    const records: AdapterRecord[] = (raw.d ?? []).flatMap((doc) => {
+      if (!PERMIT_ACTIVITY_TYPES.has(doc.ActivityType)) return [];
+      return [
+        {
+          sourceId: `ldeq-edms:${doc.DocumentId}`,
+          predicate: activityToPredicate(doc.ActivityType),
+          title: doc.FacilityName,
+          description: `LDEQ ${doc.ActivityType} permit — ${doc.PermitNumber}`,
+          location: { parish: doc.Parish },
+          url: doc.UrlPath
+            ? `${BASE}${doc.UrlPath}`
+            : `${BASE}/app/Activity/Search`,
+          fetchedAt: new Date().toISOString(),
         },
-      };
+      ];
     });
 
-    const nextCursor: Cursor | null =
-      items.length === body.PageSize ? { page: cursor.page + 1 } : null;
-
-    return {
-      records,
-      nextCursor,
-      notes: `EDMS page ${cursor.page} → ${items.length} docs (since ${since.toISOString().slice(0, 10)})`,
-    };
+    return { records };
   },
 };
 
-// ─── predicate normalization ──────────────────────────────────────────────────────
-
-function predicateFor(it: EdmsRow): string {
-  const a = (it.ActivityType ?? it.PermitNumber ?? "").toUpperCase();
-  if (a.startsWith("AQ") || a.includes("AIR")) return "permit.air.NOI";
-  if (a.startsWith("WQ") || a.includes("WATER") || a.includes("NPDES"))
-    return "permit.water.NPDES";
-  if (a.includes("WETLAND") || a.includes("404")) return "permit.wetlands.404";
-  if (a.includes("SW") || a.includes("SOLID")) return "permit.solid.waste";
-  return "permit.unknown";
-}
-
-// ─── EDMS response shapes ────────────────────────────────────────────────────────────
-
-type EdmsResponse = { Results?: EdmsRow[]; TotalCount?: number };
-type EdmsRow = {
-  DocumentId: string;
-  Title?: string;
-  DocumentDate?: string;
-  FacilityName?: string;
-  Parish?: string;
-  ActivityType?: string;
-  PermitNumber?: string;
-  UrlPath?: string;
-};
-
-function daysAgo(d: number): Date {
-  const x = new Date();
-  x.setDate(x.getDate() - d);
-  return x;
+function activityToPredicate(type: string): string {
+  switch (type) {
+    case "Air":
+      return "permit.air.NOI";
+    case "Water":
+    case "WasteWater":
+      return "permit.water.NPDES";
+    case "Wetlands":
+      return "permit.wetlands.404";
+    case "SolidWaste":
+      return "permit.solid.waste";
+    default:
+      return "permit.other";
+  }
 }

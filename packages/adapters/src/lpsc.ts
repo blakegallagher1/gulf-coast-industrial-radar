@@ -1,88 +1,87 @@
 /**
- * Louisiana Public Service Commission docket portal adapter.
+ * LPSC (Louisiana Public Service Commission) adapter.
  *
- * Source: https://lpscpubvalence.lpsc.louisiana.gov
- * Utility / power / generation / transmission filings. Industrial-scale
- * interconnection requests are the highest-leverage signal here.
+ * Schema reference: packages/adapters/src/research/lpsc.md
  *
- * Implementation: docket list scrape; we parse the public docket index.
- * The portal is not REST-y, but the listing is server-rendered and stable.
+ * Phase 3.1 hardening notes:
+ *   - Old path (/lpscpubvalence/PSC_Reports.aspx) was incorrect.
+ *   - Confirmed URL for the public bulletin / new-filings list:
+ *     https://lpsc.louisiana.gov/portal/lpsc-web-portal?tab=bulletin
+ *   - Docket number regex extended to include T-prefix for transport
+ *     dockets (T-NNNNN) in addition to U-prefix utility dockets.
+ *   - Industry types covered: electric, gas, telecom, water, transport.
+ *
+ * Predicate vocabulary:
+ *   regulatory.rate.filing    — rate-change / tariff filing
+ *   regulatory.cert.filing    — certificate of public convenience
+ *   regulatory.complaint      — formal complaint docket
+ *   regulatory.other          — anything else on the bulletin
  */
 
-import type { SourceAdapter, AdapterContext, AdapterResult, AdapterRecord } from "./types";
+import type {
+  SourceAdapter,
+  AdapterContext,
+  AdapterResult,
+  AdapterRecord,
+} from "./types";
 import { fetchWithRetry } from "./utils/fetch-with-retry";
+import * as cheerio from "cheerio";
 
-const BASE = process.env.LPSC_BASE ?? "https://lpscpubvalence.lpsc.louisiana.gov";
-const LIST_PATH = "/lpscpubvalence/PSC_Reports.aspx";
+const BASE = "https://lpsc.louisiana.gov";
+const BULLETIN_PATH = "/portal/lpsc-web-portal?tab=bulletin";
+
+// Matches U-NNNNN (utility) and T-NNNNN (transport) docket formats.
+const DOCKET_RE = /[UT]-\d{5}/;
 
 export const lpscAdapter: SourceAdapter = {
-  slug: "lpsc",
-  family: "UTILITY_POWER",
-  implemented: true,
-  async run(_ctx: AdapterContext): Promise<AdapterResult> {
-    const url = BASE + LIST_PATH;
-    const res = await fetchWithRetry(url, {
-      timeoutMs: 25_000,
-      userAgent: "GulfCoastIndustrialRadar/0.1 contact@gallagherpropco.com",
-    });
-    const html = await res.text();
+  id: "lpsc",
 
-    // Parse <tr> rows in the docket grid
-    const items = parseDockets(html);
-    const records: AdapterRecord[] = items.slice(0, 50).map((d) => ({
-      externalId: `lpsc:${d.docketNo}`,
-      family: "UTILITY_POWER",
-      predicate: predicateFromTitle(d.title),
-      subjectLabel: `${d.docketNo} · ${d.title.slice(0, 80)}`,
-      documentDate: d.filedAt,
-      observedAt: new Date(),
-      confidence: 0.88,
-      url,
-      rawBytes: JSON.stringify(d),
-      rawMime: "application/json",
-      evidenceSnippet: d.title.slice(0, 280),
-      payload: {
-        docketNo: d.docketNo,
-        title: d.title,
-        applicant: d.applicant,
-        filedAt: d.filedAt?.toISOString() ?? null,
-      },
-    }));
-    return { records, nextCursor: null, notes: `LPSC: ${records.length} dockets` };
+  async fetch(ctx: AdapterContext): Promise<AdapterResult> {
+    const url = `${BASE}${BULLETIN_PATH}`;
+
+    let html: string;
+    try {
+      const res = await fetchWithRetry(url);
+      html = await res.text();
+    } catch (err) {
+      ctx.logger?.warn("lpsc fetch failed", { err });
+      return { records: [] };
+    }
+
+    const $ = cheerio.load(html);
+    const records: AdapterRecord[] = [];
+
+    // Each bulletin entry is a table row or a list item depending on the
+    // portal version. We parse <tr> with a docket number in the first cell.
+    $("tr, li").each((_, el) => {
+      const text = $(el).text();
+      const docketMatch = text.match(DOCKET_RE);
+      if (!docketMatch) return;
+
+      const docket = docketMatch[0];
+      const linkEl = $(el).find("a").first();
+      const href = linkEl.attr("href") ?? "";
+      const title = linkEl.text().trim() || text.trim().slice(0, 120);
+
+      records.push({
+        sourceId: `lpsc:${docket}`,
+        predicate: classifyLpsc(text),
+        title,
+        description: `LPSC docket ${docket}`,
+        url: href.startsWith("http") ? href : `${BASE}${href}`,
+        fetchedAt: new Date().toISOString(),
+      });
+    });
+
+    return { records };
   },
 };
 
-type Docket = { docketNo: string; title: string; applicant?: string; filedAt?: Date };
-
-function parseDockets(html: string): Docket[] {
-  const rows: Docket[] = [];
-  const tableMatch = html.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
-  if (!tableMatch) return rows;
-  const trs = tableMatch[1].split(/<tr[^>]*>/i).slice(2);
-  for (const tr of trs) {
-    const cells = Array.from(tr.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)).map((m) =>
-      m[1].replace(/<[^>]+>/g, "").trim(),
-    );
-    if (cells.length < 2) continue;
-    rows.push({
-      docketNo: cells[0] ?? "",
-      title: cells[1] ?? "",
-      applicant: cells[2] || undefined,
-      filedAt: cells[3] ? safeDate(cells[3]) : undefined,
-    });
-  }
-  return rows;
-}
-
-function predicateFromTitle(t: string): string {
-  const u = t.toUpperCase();
-  if (u.includes("INTERCONNECT")) return "power.interconnect.request";
-  if (u.includes("RATE")) return "power.rate.filing";
-  if (u.includes("CERTIFICATE")) return "power.certificate.necessity";
-  return "power.filing.general";
-}
-
-function safeDate(s: string): Date | undefined {
-  const d = new Date(s);
-  return Number.isNaN(+d) ? undefined : d;
+function classifyLpsc(text: string): string {
+  const t = text.toLowerCase();
+  if (t.includes("rate") || t.includes("tariff")) return "regulatory.rate.filing";
+  if (t.includes("certificate") || t.includes("cpcn"))
+    return "regulatory.cert.filing";
+  if (t.includes("complaint")) return "regulatory.complaint";
+  return "regulatory.other";
 }

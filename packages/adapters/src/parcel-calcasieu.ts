@@ -1,75 +1,96 @@
 /**
- * Calcasieu Parish parcel adapter — ArcGIS REST.
+ * Parcel adapter — Calcasieu Parish.
  *
- * Source: Calcasieu Parish GIS public service (no auth).
- * Emits PARCEL_TRANSACTION signals for recent sales.
+ * Schema reference: packages/adapters/src/research/parcel-calcasieu.md
+ *
+ * Phase 3.1 hardening notes:
+ *   - BASE URL confirmed: https://www.calcasieu.net/departments/assessor
+ *   - TODO(phase3.1): Confirm the exact GIS/REST service path. The
+ *     research artifact references a web map viewer but does not document
+ *     a queryable REST endpoint URL. The SERVICE_PATH constant below is
+ *     a best-guess placeholder.
+ *   - TODO(phase3.1): Confirm the primary parcel identifier field name.
+ *     The research artifact uses "PARCEL_ID" as a label but does not
+ *     confirm the ArcGIS layer field alias.
+ *
+ * Predicate vocabulary:
+ *   parcel.sale              — parcel sold / ownership transfer
+ *   parcel.rezone            — zoning change recorded on parcel
  */
 
-import type { SourceAdapter, AdapterContext, AdapterResult, AdapterRecord } from "./types";
+import type {
+  SourceAdapter,
+  AdapterContext,
+  AdapterResult,
+  AdapterRecord,
+} from "./types";
 import { fetchWithRetry } from "./utils/fetch-with-retry";
 
 const BASE =
-  process.env.CALCASIEU_ARCGIS_BASE ??
-  "https://gis.calcasieu.net/arcgis/rest/services/Parcels/MapServer/0";
+  process.env.PARCEL_CALCASIEU_BASE ??
+  "https://www.calcasieu.net/departments/assessor";
 
-export const calcasieuParcelAdapter: SourceAdapter = {
-  slug: "parcel-calcasieu",
-  family: "PARCEL_TRANSACTION",
-  implemented: true,
-  async run(ctx: AdapterContext): Promise<AdapterResult> {
-    const since = ctx.since ?? daysAgo(30);
+/**
+ * TODO(phase3.1): Replace with confirmed ArcGIS REST query URL once the
+ * service endpoint is identified via the Calcasieu GIS portal.
+ */
+const SERVICE_PATH = "/arcgis/rest/services/Parcels/MapServer/0/query";
 
-    const url = new URL(`${BASE}/query`);
-    url.searchParams.set("where", `SALEDATE >= DATE '${since.toISOString().slice(0, 10)}'`);
-    url.searchParams.set("outFields", "PARCELID,OWNER1,SALEDATE,SALEPRICE,TOTALACRES,LANDUSE");
-    url.searchParams.set("returnGeometry", "false");
-    url.searchParams.set("f", "json");
-    url.searchParams.set("resultRecordCount", "200");
+const DEFAULT_QUERY = new URLSearchParams({
+  where: "1=1",
+  outFields: "PARCEL_ID,OWNER,ACRES,ZONING,SALE_DATE,SALE_PRICE",
+  f: "json",
+  resultRecordCount: "500",
+});
 
-    const res = await fetchWithRetry(url.toString(), {
-      timeoutMs: 20_000,
-      userAgent: "GulfCoastIndustrialRadar/0.1",
-    });
-    const json = (await res.json()) as ArcGisResponse;
+interface CalcasieuRecord {
+  attributes: {
+    PARCEL_ID: string; // TODO(phase3.1): confirm field name
+    OWNER: string;
+    ACRES: number;
+    ZONING: string;
+    SALE_DATE: string;
+    SALE_PRICE: number;
+  };
+}
 
-    const records: AdapterRecord[] = (json.features ?? []).map((f) => {
-      const a = f.attributes;
-      return {
-        externalId: `calcasieu:${a.PARCELID}`,
-        family: "PARCEL_TRANSACTION",
-        predicate: "parcel.sale.recent",
-        subjectLabel: `Calcasieu · ${a.PARCELID} · ${String(a.OWNER1 ?? "unknown owner")}`,
-        documentDate: a.SALEDATE ? new Date(Number(a.SALEDATE)) : undefined,
-        observedAt: new Date(),
-        confidence: 0.89,
-        url: BASE,
-        rawBytes: JSON.stringify(f),
-        rawMime: "application/json",
-        evidenceSnippet: `${a.OWNER1 ?? "?"} · $${a.SALEPRICE?.toLocaleString() ?? "?"} · ${a.TOTALACRES ?? "?"}ac`,
-        payload: {
-          apn: String(a.PARCELID ?? ""),
-          owner: String(a.OWNER1 ?? ""),
-          salePrice: typeof a.SALEPRICE === "number" ? a.SALEPRICE : null,
-          saleDate: a.SALEDATE ? new Date(Number(a.SALEDATE)).toISOString() : null,
-          acres: typeof a.TOTALACRES === "number" ? a.TOTALACRES : null,
-          landUse: String(a.LANDUSE ?? ""),
-          parish: "Calcasieu",
-        },
-      };
-    });
+interface CalcasieuResponse {
+  features: CalcasieuRecord[];
+}
 
-    return {
-      records,
-      nextCursor: null,
-      notes: `Calcasieu parcels: ${records.length} recent sales`,
-    };
+export const parcelCalcasieuAdapter: SourceAdapter = {
+  id: "parcel-calcasieu",
+
+  async fetch(ctx: AdapterContext): Promise<AdapterResult> {
+    const url = `${BASE}${SERVICE_PATH}?${DEFAULT_QUERY}`;
+
+    let raw: CalcasieuResponse;
+    try {
+      const res = await fetchWithRetry(url);
+      raw = (await res.json()) as CalcasieuResponse;
+    } catch (err) {
+      ctx.logger?.warn("parcel-calcasieu fetch failed", { err });
+      return { records: [] };
+    }
+
+    const records: AdapterRecord[] = (raw.features ?? []).flatMap(
+      (feature) => {
+        const a = feature.attributes;
+        if (!a.PARCEL_ID) return [];
+        return [
+          {
+            sourceId: `parcel-calcasieu:${a.PARCEL_ID}`,
+            predicate: a.SALE_DATE ? "parcel.sale" : "parcel.rezone",
+            title: a.OWNER || `Parcel ${a.PARCEL_ID}`,
+            description: `Calcasieu parcel ${a.PARCEL_ID} — ${a.ACRES} acres — ${a.ZONING}`,
+            location: { parish: "Calcasieu" },
+            date: a.SALE_DATE || undefined,
+            fetchedAt: new Date().toISOString(),
+          },
+        ];
+      }
+    );
+
+    return { records };
   },
 };
-
-type ArcGisResponse = { features?: Array<{ attributes: Record<string, unknown> }> };
-
-function daysAgo(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d;
-}

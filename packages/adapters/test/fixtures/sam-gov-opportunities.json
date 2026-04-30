@@ -1,0 +1,31 @@
+{
+  "totalRecords": 2,
+  "opportunitiesData": [
+    {
+      "noticeId": "NOTICE-2024-001",
+      "title": "Gulf Coast Port Dredging Services",
+      "type": "Solicitation",
+      "postedDate": "04/10/2024",
+      "responseDeadLine": "05/10/2024",
+      "naicsCode": "237990",
+      "uiLink": "https://sam.gov/opp/abc123/view",
+      "placeOfPerformance": {
+        "state": { "code": "LA" },
+        "city": { "name": "Lake Charles" }
+      }
+    },
+    {
+      "noticeId": "NOTICE-2024-002",
+      "title": "Refinery Inspection Services Contract Award",
+      "type": "Award Notice",
+      "postedDate": "04/12/2024",
+      "responseDeadLine": null,
+      "naicsCode": "541330",
+      "uiLink": "https://sam.gov/opp/def456/view",
+      "placeOfPerformance": {
+        "state": { "code": "TX" },
+        "city": { "name": "Beaumont" }
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>EMMA New Issues</title>
+    <link>https://emma.msrb.org</link>
+    <description>New municipal securities issues</description>
+    <item>
+      <title>State of Louisiana Revenue Bond Series 2024A</title>
+      <link>https://emma.msrb.org/IssueView/Details/ER1234567</link>
+      <description>$150,000,000 State of Louisiana Revenue Bond</description>
+      <pubDate>Mon, 15 Apr 2024 10:00:00 GMT</pubDate>
+      <guid>ER1234567</guid>
+    </item>
+    <item>
+      <title>East Baton Rouge Parish School Board Refunding Bond 2024</title>
+      <link>https://emma.msrb.org/IssueView/Details/ER7654321</link>
+      <description>$45,000,000 Refunding bond for prior obligations</description>
+      <pubDate>Tue, 16 Apr 2024 14:30:00 GMT</pubDate>
+      <guid>ER7654321</guid>
+    </item>
+  </channel>
+</rss>

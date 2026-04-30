@@ -1,0 +1,24 @@
+{
+  "features": [
+    {
+      "attributes": {
+        "PARCEL_ID": "000-00001",
+        "OWNER": "ACME INDUSTRIES LLC",
+        "ACRES": 12.5,
+        "ZONING": "M2",
+        "SALE_DATE": "01/15/2024",
+        "SALE_PRICE": 450000
+      }
+    },
+    {
+      "attributes": {
+        "PARCEL_ID": "000-00002",
+        "OWNER": "GULF COAST PROPERTIES",
+        "ACRES": 5.2,
+        "ZONING": "C3",
+        "SALE_DATE": null,
+        "SALE_PRICE": 0
+      }
+    }
+  ]
+}

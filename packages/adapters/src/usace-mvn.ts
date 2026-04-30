@@ -1,109 +1,88 @@
 /**
- * USACE New Orleans District public notices adapter.
+ * USACE MVN (Mississippi Valley New Orleans District) adapter.
  *
- * Source: https://www.mvn.usace.army.mil/Missions/Regulatory/Permits/Public-Notices/
- * Public-facing HTML listing of Section 404 / 10 permit public notices.
- * No API — we parse the server-rendered table of notices.
+ * Schema reference: packages/adapters/src/research/usace-mvn.md
  *
- * Predicate: permit.wetlands.404.USACE
+ * Phase 3.1 hardening notes:
+ *   - Primary permit-notices URL confirmed:
+ *     https://www.mvn.usace.army.mil/Missions/Regulatory/Announcements/
+ *   - The notices page lists PDF / HTML public-notice links. Each notice
+ *     has a date, permit application number, and project description.
+ *   - Section 408 (alterations to federal works) lives at a separate path.
+ *     Constant _SECTION_408_PATH is recorded here for the follow-up
+ *     second-feed merge (phase 3.2).
+ *   - HTML structure: table with columns
+ *     [Date Issued, Permit Number, Project Name, Location, Expiration]
+ *     — confirmed by the research artifact sample.
+ *
+ * Predicate vocabulary:
+ *   permit.wetlands.404      — Section 404 / nationwide permit
+ *   permit.wetlands.408      — Section 408 alteration-to-federal-works
  */
 
-import type { SourceAdapter, AdapterContext, AdapterResult, AdapterRecord } from "./types";
+import type {
+  SourceAdapter,
+  AdapterContext,
+  AdapterResult,
+  AdapterRecord,
+} from "./types";
 import { fetchWithRetry } from "./utils/fetch-with-retry";
+import * as cheerio from "cheerio";
 
-const BASE = process.env.USACE_MVN_BASE ?? "https://www.mvn.usace.army.mil";
-const LIST_PATH = "/Missions/Regulatory/Permits/Public-Notices/";
+const BASE = "https://www.mvn.usace.army.mil";
+const NOTICES_PATH = "/Missions/Regulatory/Announcements/";
+
+/**
+ * Section 408 notices — kept as constant for phase 3.2 merge.
+ * @see https://www.mvn.usace.army.mil/Missions/Regulatory/Section-408/
+ */
+export const _SECTION_408_PATH = "/Missions/Regulatory/Section-408/";
 
 export const usaceMvnAdapter: SourceAdapter = {
-  slug: "usace-mvn",
-  family: "ENVIRONMENTAL_PERMIT",
-  implemented: true,
-  async run(ctx: AdapterContext): Promise<AdapterResult> {
-    const url = BASE + LIST_PATH;
-    const res = await fetchWithRetry(url, {
-      timeoutMs: 30_000,
-      userAgent: "GulfCoastIndustrialRadar/0.1 contact@gallagherpropco.com",
+  id: "usace-mvn",
+
+  async fetch(ctx: AdapterContext): Promise<AdapterResult> {
+    const url = `${BASE}${NOTICES_PATH}`;
+
+    let html: string;
+    try {
+      const res = await fetchWithRetry(url);
+      html = await res.text();
+    } catch (err) {
+      ctx.logger?.warn("usace-mvn fetch failed", { err });
+      return { records: [] };
+    }
+
+    const $ = cheerio.load(html);
+    const records: AdapterRecord[] = [];
+
+    // The public-notice table has a header row followed by data rows.
+    // Columns: Date Issued | Permit Number | Project Name | Location | Expiration
+    $("table tr").each((_, row) => {
+      const cells = $(row).find("td");
+      if (cells.length < 4) return;
+
+      const dateText = $(cells[0]).text().trim();
+      const permitNo = $(cells[1]).text().trim();
+      const projectName = $(cells[2]).text().trim();
+      const location = $(cells[3]).text().trim();
+      const linkEl = $(cells[2]).find("a");
+      const href = linkEl.attr("href") ?? "";
+
+      if (!permitNo || !projectName) return;
+
+      records.push({
+        sourceId: `usace-mvn:${permitNo}`,
+        predicate: "permit.wetlands.404",
+        title: projectName,
+        description: `USACE MVN public notice — ${permitNo} — ${location}`,
+        location: { raw: location },
+        url: href.startsWith("http") ? href : `${BASE}${href}`,
+        date: dateText || undefined,
+        fetchedAt: new Date().toISOString(),
+      });
     });
-    const html = await res.text();
 
-    const notices = parseNotices(html);
-    const since = ctx.since ?? daysAgo(30);
-
-    const fresh = notices.filter(
-      (n) => !n.issuedAt || n.issuedAt >= since,
-    );
-
-    const records: AdapterRecord[] = fresh.map((n) => ({
-      externalId: `usace-mvn:${n.noticeNo}`,
-      family: "ENVIRONMENTAL_PERMIT",
-      predicate: "permit.wetlands.404.USACE",
-      subjectLabel: `USACE MVN · ${n.noticeNo} · ${n.applicant ?? "unknown"}`,
-      documentDate: n.issuedAt,
-      observedAt: new Date(),
-      confidence: 0.96,
-      url: n.href ? BASE + n.href : url,
-      rawBytes: JSON.stringify(n),
-      rawMime: "application/json",
-      evidenceSnippet: `${n.description?.slice(0, 200) ?? ""}`,
-      payload: {
-        noticeNo: n.noticeNo,
-        applicant: n.applicant ?? null,
-        location: n.location ?? null,
-        issuedAt: n.issuedAt?.toISOString() ?? null,
-        expiresAt: n.expiresAt?.toISOString() ?? null,
-      },
-    }));
-
-    return {
-      records,
-      nextCursor: null,
-      notes: `USACE MVN: ${records.length} fresh notices (of ${notices.length} total) since ${since.toISOString().slice(0, 10)}`,
-    };
+    return { records };
   },
 };
-
-type Notice = {
-  noticeNo: string;
-  applicant?: string;
-  description?: string;
-  location?: string;
-  issuedAt?: Date;
-  expiresAt?: Date;
-  href?: string;
-};
-
-function parseNotices(html: string): Notice[] {
-  const notices: Notice[] = [];
-  // USACE MVN renders a table with columns: Notice #, Applicant, Description, Location, Issue, Expiration, Link
-  const tableMatch = html.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
-  if (!tableMatch) return notices;
-  const rows = tableMatch[1].split(/<tr[^>]*>/i).slice(2); // skip header rows
-  for (const row of rows) {
-    const cells = Array.from(row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)).map((m) =>
-      m[1].replace(/<[^>]+>/g, "").trim(),
-    );
-    if (!cells[0]) continue;
-    const linkMatch = row.match(/href="([^"]*)"/i);
-    notices.push({
-      noticeNo: cells[0],
-      applicant: cells[1] || undefined,
-      description: cells[2] || undefined,
-      location: cells[3] || undefined,
-      issuedAt: cells[4] ? safeDate(cells[4]) : undefined,
-      expiresAt: cells[5] ? safeDate(cells[5]) : undefined,
-      href: linkMatch?.[1],
-    });
-  }
-  return notices;
-}
-
-function safeDate(s: string): Date | undefined {
-  const d = new Date(s);
-  return Number.isNaN(+d) ? undefined : d;
-}
-
-function daysAgo(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d;
-}

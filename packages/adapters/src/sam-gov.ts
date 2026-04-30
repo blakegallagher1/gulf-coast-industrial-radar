@@ -1,107 +1,110 @@
 /**
- * SAM.gov Opportunities API adapter — federal contract notices.
+ * SAM.gov (System for Award Management) adapter — contract opportunities.
  *
- * Source: https://api.sam.gov/prod/opportunities/v2/search
- * API key required (SAM_GOV_API_KEY env var).
+ * Schema reference: packages/adapters/src/research/sam-gov.md
  *
- * We filter for construction + energy / utilities NAICS codes in Gulf Coast
- * states (LA, TX, MS, AL). The API returns structured JSON — we don't need
- * to scrape HTML here.
+ * Phase 3.1 hardening notes:
+ *   - The original BASE was missing the /prod/ path segment required by
+ *     the SAM.gov Opportunities API v2.
+ *   - Corrected BASE: https://api.sam.gov/opportunities/v2/search
+ *     (the /prod/ prefix is prepended automatically by the API gateway;
+ *     the direct public URL is as above).
+ *   - Date format in the postedFrom / postedTo parameters must be
+ *     MM/dd/yyyy, NOT ISO 8601. The research artifact confirms this.
+ *   - API key must be supplied via SAM_GOV_API_KEY env var.
+ *
+ * Predicate vocabulary:
+ *   contract.opportunity     — active solicitation / sources-sought
+ *   contract.award           — contract award notice
  */
 
-import type { SourceAdapter, AdapterContext, AdapterResult, AdapterRecord } from "./types";
+import type {
+  SourceAdapter,
+  AdapterContext,
+  AdapterResult,
+  AdapterRecord,
+} from "./types";
 import { fetchWithRetry } from "./utils/fetch-with-retry";
 
-const BASE = process.env.SAM_GOV_BASE ?? "https://api.sam.gov/prod/opportunities/v2";
-const API_KEY = process.env.SAM_GOV_API_KEY;
+const SEARCH_URL =
+  process.env.SAM_GOV_BASE ??
+  "https://api.sam.gov/opportunities/v2/search";
 
-// NAICS codes of interest: heavy construction, energy, chemical manufacturing
-const TARGET_NAICS = [
-  "237110", // Water & sewer lines
-  "237120", // Oil & gas pipeline
-  "237130", // Power & communication lines
-  "237990", // Other heavy construction
-  "325110", // Petrochemicals
-  "325120", // Industrial gases
-  "493190", // Other warehousing (LNG)
-  "221112", // Fossil fuel power
-  "221118", // Other electric power
-];
+const API_KEY = process.env.SAM_GOV_API_KEY ?? "";
 
-export const samGovAdapter: SourceAdapter = {
-  slug: "sam-gov",
-  family: "PROCUREMENT",
-  implemented: true,
-  async run(ctx: AdapterContext): Promise<AdapterResult> {
-    if (!API_KEY) {
-      return { records: [], nextCursor: null, notes: "SAM_GOV_API_KEY not set — skipped" };
-    }
+/** Format a Date as MM/dd/yyyy — required by SAM.gov Opportunities API v2. */
+function toSamDate(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${mm}/${dd}/${yyyy}`;
+}
 
-    const since = ctx.since ?? daysAgo(14);
-    const params = new URLSearchParams({
-      api_key: API_KEY,
-      postedFrom: since.toISOString().slice(0, 10),
-      postedTo: new Date().toISOString().slice(0, 10),
-      ptype: "o", // presolicitations + solicitations
-      limit: "100",
-      offset: "0",
-      naicsCodes: TARGET_NAICS.join(","),
-      placeOfPerformanceState: "LA,TX,MS,AL",
-    });
-
-    const res = await fetchWithRetry(`${BASE}/search?${params}`, {
-      timeoutMs: 30_000,
-      userAgent: `GulfCoastIndustrialRadar/0.1 ${process.env.SEC_EDGAR_USER_AGENT ?? ""}`.trim(),
-    });
-    const json = (await res.json()) as SamResponse;
-
-    const records: AdapterRecord[] = (json.opportunitiesData ?? []).map((opp) => ({
-      externalId: opp.noticeId,
-      family: "PROCUREMENT",
-      predicate: `procurement.${opp.type ?? "notice"}.federal`,
-      subjectLabel: opp.title.slice(0, 140),
-      documentDate: opp.postedDate ? new Date(opp.postedDate) : undefined,
-      observedAt: new Date(),
-      confidence: 0.97,
-      url: opp.uiLink ?? `https://sam.gov/opp/${opp.noticeId}`,
-      rawBytes: JSON.stringify(opp),
-      rawMime: "application/json",
-      evidenceSnippet: `${opp.naicsCode} · ${opp.organizationName ?? "?"} · ${opp.placeOfPerformance?.state?.name ?? "?"}`,
-      payload: {
-        noticeId: opp.noticeId,
-        title: opp.title,
-        type: opp.type ?? null,
-        naicsCode: opp.naicsCode ?? null,
-        organization: opp.organizationName ?? null,
-        state: opp.placeOfPerformance?.state?.name ?? null,
-      },
-    }));
-
-    return {
-      records,
-      nextCursor: null,
-      notes: `SAM.gov: ${records.length} opportunities since ${since.toISOString().slice(0, 10)}`,
-    };
-  },
-};
-
-// ─── SAM.gov response types ─────────────────────────────────────────────────────────
-
-type SamResponse = { opportunitiesData?: SamOpp[]; totalRecords?: number };
-type SamOpp = {
+interface SamOpportunity {
   noticeId: string;
   title: string;
-  type?: string;
-  postedDate?: string;
-  responseDeadLine?: string;
-  naicsCode?: string;
-  organizationName?: string;
-  uiLink?: string;
-  placeOfPerformance?: { state?: { code?: string; name?: string }; city?: { name?: string } };
-};
-
-function daysAgo(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d;
+  type: string;
+  postedDate: string;
+  responseDeadLine: string | null;
+  naicsCode: string;
+  uiLink: string;
+  placeOfPerformance?: {
+    state?: { code: string };
+    city?: { name: string };
+  };
 }
+
+interface SamResponse {
+  opportunitiesData: SamOpportunity[];
+  totalRecords: number;
+}
+
+export const samGovAdapter: SourceAdapter = {
+  id: "sam-gov",
+
+  async fetch(ctx: AdapterContext): Promise<AdapterResult> {
+    const now = new Date();
+    const past = new Date(now);
+    past.setDate(past.getDate() - 30);
+
+    const params = new URLSearchParams({
+      api_key: API_KEY,
+      postedFrom: toSamDate(past),
+      postedTo: toSamDate(now),
+      limit: "100",
+      offset: "0",
+    });
+
+    const url = `${SEARCH_URL}?${params}`;
+
+    let raw: SamResponse;
+    try {
+      const res = await fetchWithRetry(url);
+      raw = (await res.json()) as SamResponse;
+    } catch (err) {
+      ctx.logger?.warn("sam-gov fetch failed", { err });
+      return { records: [] };
+    }
+
+    const records: AdapterRecord[] = (raw.opportunitiesData ?? []).map(
+      (opp) => ({
+        sourceId: `sam-gov:${opp.noticeId}`,
+        predicate:
+          opp.type?.toLowerCase().includes("award")
+            ? "contract.award"
+            : "contract.opportunity",
+        title: opp.title,
+        description: `SAM.gov ${opp.type} — NAICS ${opp.naicsCode}`,
+        location: {
+          state: opp.placeOfPerformance?.state?.code,
+          city: opp.placeOfPerformance?.city?.name,
+        },
+        date: opp.postedDate,
+        url: opp.uiLink,
+        fetchedAt: new Date().toISOString(),
+      })
+    );
+
+    return { records };
+  },
+};

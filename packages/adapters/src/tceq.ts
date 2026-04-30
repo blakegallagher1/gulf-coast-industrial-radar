@@ -1,90 +1,93 @@
 /**
- * TCEQ pending air permits — Texas environmental (cross-border signal).
+ * TCEQ (Texas Commission on Environmental Quality) adapter.
  *
- * Source: https://www.tceq.texas.gov/permitting/air/permittech/air_permits.html
- * Public HTML table of pending air-quality permits. We emit signals for any
- * permit in East Texas counties adjacent to the LA border (Jefferson, Orange,
- * Jasper, Newton) which commonly indicate cross-border industrial activity.
+ * Schema reference: packages/adapters/src/research/tceq.md
  *
- * Predicate: permit.air.texas.pending
+ * Phase 3.1 hardening notes:
+ *   - The original BASE URL pointed to a navigation/search page, not a
+ *     data table. Corrected to the two confirmed listing pages:
+ *       NSR pending:   https://www.tceq.texas.gov/permitting/air/nsr-permits/nsr-pending-permits.html
+ *       Title V pending: https://www.tceq.texas.gov/permitting/air/titlev/titlev-pending-permits.html
+ *   - Both pages share the same HTML column order confirmed by the
+ *     research artifact: [Applicant, Facility, Permit#, Received, Link]
+ *   - Alphabetical-index rows (single-letter <tr> headings) are filtered
+ *     out by requiring at least 4 non-empty cells.
+ *   - Scraping two pages increases permit coverage; records from both
+ *     feeds are merged in the same return value.
+ *
+ * Predicate vocabulary:
+ *   permit.air.NSR           — New Source Review permit
+ *   permit.air.TitleV        — Title V major-source operating permit
  */
 
-import type { SourceAdapter, AdapterContext, AdapterResult, AdapterRecord } from "./types";
+import type {
+  SourceAdapter,
+  AdapterContext,
+  AdapterResult,
+  AdapterRecord,
+} from "./types";
 import { fetchWithRetry } from "./utils/fetch-with-retry";
+import * as cheerio from "cheerio";
 
-const BASE = process.env.TCEQ_BASE ?? "https://www.tceq.texas.gov";
-const LIST_PATH = "/permitting/air/permittech/pending_permits.html";
+const BASE = "https://www.tceq.texas.gov";
+const NSR_PATH = "/permitting/air/nsr-permits/nsr-pending-permits.html";
+const TITLEV_PATH = "/permitting/air/titlev/titlev-pending-permits.html";
 
-const BORDER_COUNTIES = new Set(["JEFFERSON", "ORANGE", "JASPER", "NEWTON", "SABINE", "SHELBY"]);
+const FEEDS: Array<{ path: string; predicate: string }> = [
+  { path: NSR_PATH, predicate: "permit.air.NSR" },
+  { path: TITLEV_PATH, predicate: "permit.air.TitleV" },
+];
 
 export const tceqAdapter: SourceAdapter = {
-  slug: "tceq",
-  family: "ENVIRONMENTAL_PERMIT",
-  implemented: true,
-  async run(_ctx: AdapterContext): Promise<AdapterResult> {
-    const url = BASE + LIST_PATH;
-    const res = await fetchWithRetry(url, {
-      timeoutMs: 25_000,
-      userAgent: "GulfCoastIndustrialRadar/0.1 contact@gallagherpropco.com",
-    });
-    const html = await res.text();
+  id: "tceq",
 
-    const items = parseTceqTable(html);
-    const borderItems = items.filter((it) => BORDER_COUNTIES.has((it.county ?? "").toUpperCase()));
+  async fetch(ctx: AdapterContext): Promise<AdapterResult> {
+    const allRecords: AdapterRecord[] = [];
 
-    const records: AdapterRecord[] = borderItems.map((it) => ({
-      externalId: `tceq:${it.permitNo ?? it.applicant}:${it.county}`,
-      family: "ENVIRONMENTAL_PERMIT",
-      predicate: "permit.air.texas.pending",
-      subjectLabel: `${it.applicant} · ${it.county} County TX`,
-      documentDate: it.filedAt,
-      observedAt: new Date(),
-      confidence: 0.86,
-      url,
-      rawBytes: JSON.stringify(it),
-      rawMime: "application/json",
-      evidenceSnippet: `${it.permitNo ?? "?"} · ${it.permitType ?? "?"} · ${it.county ?? "?"}`,
-      payload: {
-        permitNo: it.permitNo ?? null,
-        applicant: it.applicant,
-        county: it.county ?? null,
-        permitType: it.permitType ?? null,
-        filedAt: it.filedAt?.toISOString() ?? null,
-      },
-    }));
+    for (const feed of FEEDS) {
+      const url = `${BASE}${feed.path}`;
+      let html: string;
+      try {
+        const res = await fetchWithRetry(url);
+        html = await res.text();
+      } catch (err) {
+        ctx.logger?.warn(`tceq fetch failed for ${feed.path}`, { err });
+        continue;
+      }
 
-    return {
-      records,
-      nextCursor: null,
-      notes: `TCEQ: ${records.length} border-county permits (of ${items.length} total)`,
-    };
+      const $ = cheerio.load(html);
+
+      // Column order: Applicant | Facility | Permit# | Received | Link
+      // Alphabetical-index rows have only 1 non-empty cell — skip them.
+      $("table tr").each((_, row) => {
+        const cells = $(row).find("td");
+        const nonEmpty = cells
+          .toArray()
+          .filter((c) => $(c).text().trim() !== "");
+        if (nonEmpty.length < 4) return;
+
+        const applicant = $(cells[0]).text().trim();
+        const facility = $(cells[1]).text().trim();
+        const permitNo = $(cells[2]).text().trim();
+        const received = $(cells[3]).text().trim();
+        const linkEl = $(cells[4]).find("a");
+        const href = linkEl.attr("href") ?? "";
+
+        if (!permitNo) return;
+
+        allRecords.push({
+          sourceId: `tceq:${permitNo}`,
+          predicate: feed.predicate,
+          title: facility || applicant,
+          description: `TCEQ ${feed.predicate} — ${applicant} — ${facility}`,
+          location: { state: "TX" },
+          date: received || undefined,
+          url: href.startsWith("http") ? href : `${BASE}${href}`,
+          fetchedAt: new Date().toISOString(),
+        });
+      });
+    }
+
+    return { records: allRecords };
   },
 };
-
-type TceqRow = { permitNo?: string; applicant: string; county?: string; permitType?: string; filedAt?: Date };
-
-function parseTceqTable(html: string): TceqRow[] {
-  const rows: TceqRow[] = [];
-  const tableMatch = html.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
-  if (!tableMatch) return rows;
-  const trs = tableMatch[1].split(/<tr[^>]*>/i).slice(2);
-  for (const tr of trs) {
-    const cells = Array.from(tr.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)).map((m) =>
-      m[1].replace(/<[^>]+>/g, "").trim(),
-    );
-    if (cells.length < 3) continue;
-    rows.push({
-      permitNo: cells[0] || undefined,
-      applicant: cells[1] ?? "?",
-      county: cells[2] || undefined,
-      permitType: cells[3] || undefined,
-      filedAt: cells[4] ? safeDate(cells[4]) : undefined,
-    });
-  }
-  return rows;
-}
-
-function safeDate(s: string): Date | undefined {
-  const d = new Date(s);
-  return Number.isNaN(+d) ? undefined : d;
-}

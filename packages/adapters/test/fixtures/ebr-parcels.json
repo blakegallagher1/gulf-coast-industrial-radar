@@ -1,0 +1,24 @@
+{
+  "features": [
+    {
+      "properties": {
+        "ASMT": "1234567890",
+        "OWNER": "EXXON MOBIL CORPORATION",
+        "ACRES": 45.7,
+        "ZONING": "M1",
+        "SALE_DATE": "06/01/2023",
+        "SALE_PRICE": 3500000
+      }
+    },
+    {
+      "properties": {
+        "ASMT": "9876543210",
+        "OWNER": "TURNER INDUSTRIES GROUP LLC",
+        "ACRES": 8.1,
+        "ZONING": "M2",
+        "SALE_DATE": "",
+        "SALE_PRICE": 0
+      }
+    }
+  ]
+}

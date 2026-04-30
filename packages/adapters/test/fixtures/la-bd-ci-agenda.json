@@ -1,0 +1,24 @@
+{
+  "records": [
+    {
+      "id": "CI-2024-001",
+      "projectName": "Denka Performance Elastomer Expansion",
+      "parish": "St. John the Baptist",
+      "type": "Industrial Tax Exemption",
+      "value": 85000000,
+      "jobs": 45,
+      "meetingDate": "2024-04-10",
+      "status": "Approved"
+    },
+    {
+      "id": "CI-2024-002",
+      "projectName": "Lake Charles LNG Terminal Phase 2",
+      "parish": "Calcasieu",
+      "type": "LED FastLane",
+      "value": 2400000000,
+      "jobs": 320,
+      "meetingDate": "2024-04-10",
+      "status": "Pending"
+    }
+  ]
+}
