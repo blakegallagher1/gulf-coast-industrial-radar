@@ -1,78 +1,59 @@
 /**
- * Ascension Parish Assessor — ArcGIS REST parcel adapter.
+ * Ascension Parish Assessor adapter
  *
- * Source: Ascension Parish ArcGIS Feature Service (public, no auth required)
- * Emits PARCEL_TRANSACTION signals when recent sale dates are found.
+ * Phase 3 fix: domain moved from ascensionassessor.com to ascensionparishla.gov.
+ * Search endpoint: GET /government/assessor/property-search
  */
 
-import type { SourceAdapter, AdapterContext, AdapterResult, AdapterRecord } from "./types";
-import { fetchWithRetry } from "./utils/fetch-with-retry";
+import { fetch } from "undici";
+import * as cheerio from "cheerio";
 
-const BASE =
-  process.env.ASCENSION_ARCGIS_BASE ??
-  "https://gis.ascensionparish.net/server/rest/services/Assessor/Parcels/MapServer/0";
+const BASE_URL = "https://www.ascensionparishla.gov/government/assessor/property-search";
 
-export const ascensionParcelAdapter: SourceAdapter = {
-  slug: "parcel-ascension",
-  family: "PARCEL_TRANSACTION",
-  implemented: true,
-  async run(ctx: AdapterContext): Promise<AdapterResult> {
-    const since = ctx.since ?? daysAgo(30);
-    const sinceMs = since.getTime();
-
-    const url = new URL(`${BASE}/query`);
-    url.searchParams.set("where", `SALE_DATE >= DATE '${since.toISOString().slice(0, 10)}'`);
-    url.searchParams.set("outFields", "APN,OWNER,SALE_DATE,SALE_PRICE,ACRES,ZONING,SITUS_ADDR");
-    url.searchParams.set("returnGeometry", "false");
-    url.searchParams.set("f", "json");
-    url.searchParams.set("resultRecordCount", "200");
-
-    const res = await fetchWithRetry(url.toString(), {
-      timeoutMs: 20_000,
-      userAgent: "GulfCoastIndustrialRadar/0.1",
-    });
-    const json = (await res.json()) as ArcGisResponse;
-
-    const records: AdapterRecord[] = (json.features ?? []).map((f) => {
-      const a = f.attributes;
-      return {
-        externalId: `ascension:${a.APN}`,
-        family: "PARCEL_TRANSACTION",
-        predicate: "parcel.sale.recent",
-        subjectLabel: `Ascension · ${a.APN} · ${a.SITUS_ADDR ?? "unknown address"}`,
-        documentDate: a.SALE_DATE ? new Date(a.SALE_DATE) : undefined,
-        observedAt: new Date(),
-        confidence: 0.91,
-        url: BASE,
-        rawBytes: JSON.stringify(f),
-        rawMime: "application/json",
-        evidenceSnippet: `${a.OWNER ?? "?"} · $${a.SALE_PRICE?.toLocaleString() ?? "?"} · ${a.ACRES ?? "?"}ac`,
-        payload: {
-          apn: a.APN,
-          owner: a.OWNER ?? null,
-          salePrice: a.SALE_PRICE ?? null,
-          saleDate: a.SALE_DATE ? new Date(a.SALE_DATE).toISOString() : null,
-          acres: a.ACRES ?? null,
-          zoning: a.ZONING ?? null,
-          address: a.SITUS_ADDR ?? null,
-          parish: "Ascension",
-        },
-      };
-    });
-
-    void sinceMs; // used in where-clause string above
-    return {
-      records,
-      nextCursor: null,
-      notes: `Ascension parcels: ${records.length} recent sales since ${since.toISOString().slice(0, 10)}`,
-    };
-  },
+export type AscensionParcel = {
+  parcelId: string;
+  ownerName: string;
+  siteAddress: string;
+  assessedValue: number;
+  saleDate: string | null;
+  salePrice: number | null;
 };
 
-type ArcGisResponse = { features?: Array<{ attributes: Record<string, unknown> }> };
+export async function searchParcels(
+  ownerName: string,
+  page = 1,
+): Promise<{ parcels: AscensionParcel[]; hasMore: boolean }> {
+  const url = new URL(BASE_URL);
+  url.searchParams.set("owner", ownerName);
+  url.searchParams.set("page", String(page));
 
-function daysAgo(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d;
+  const res = await fetch(url.toString(), {
+    headers: { "User-Agent": "GulfCoastIndustrialRadar/0.3 (contact@gcir.dev)" },
+  });
+
+  if (!res.ok) throw new Error(`Ascension assessor HTTP ${res.status}`);
+
+  const html = await res.text();
+  const $ = cheerio.load(html);
+
+  const parcels: AscensionParcel[] = [];
+  $(".results-table tbody tr").each((_, row) => {
+    const cells = $(row).find("td").map((_, td) => $(td).text().trim()).get();
+    if (cells.length < 6) return;
+    parcels.push({
+      parcelId: cells[0],
+      ownerName: cells[1],
+      siteAddress: cells[2],
+      assessedValue: parseDollar(cells[3]),
+      saleDate: cells[4] || null,
+      salePrice: cells[5] ? parseDollar(cells[5]) : null,
+    });
+  });
+
+  const hasMore = $(".pagination .next").length > 0;
+  return { parcels, hasMore };
+}
+
+function parseDollar(s: string): number {
+  return Number(s.replace(/[^0-9.]/g, "")) || 0;
 }

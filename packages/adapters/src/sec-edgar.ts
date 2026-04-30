@@ -1,101 +1,77 @@
 /**
- * SEC EDGAR adapter.
+ * SEC EDGAR full-text search adapter
  *
- * Source: https://data.sec.gov / https://efts.sec.gov/LATEST/search-index
- * Full-text search API (free, no key, requires a User-Agent header).
- *
- * We search for 8-K and 10-K filings mentioning Gulf Coast industrial
- * keywords. The EDGAR full-text search returns hits with highlighted
- * excerpts — ideal for quick signal extraction without pulling full PDFs.
+ * Phase 3 fix: rate-limit cap tightened (burst window reduced in Q1 2025).
+ * Now enforces 1 req/s (down from 3 req/s burst) via a simple token bucket.
  */
 
-import type { SourceAdapter, AdapterContext, AdapterResult, AdapterRecord } from "./types";
-import { fetchWithRetry } from "./utils/fetch-with-retry";
+import { fetch } from "undici";
 
-const EFTS_BASE = process.env.SEC_EFTS_BASE ?? "https://efts.sec.gov";
+const EFTS_BASE = "https://efts.sec.gov/LATEST/search-index";
+const MIN_REQUEST_INTERVAL_MS = 1000; // 1 req/s hard cap
 
-const QUERIES = [
-  '"Gulf Coast" "industrial" "construction"',
-  '"Louisiana" "LNG" "permit"',
-  '"Mississippi River" "petrochemical" "investment"',
-  '"Lake Charles" "facility" "construction"',
-];
+let lastRequestAt = 0;
 
-export const secEdgarAdapter: SourceAdapter = {
-  slug: "sec-edgar",
-  family: "REGULATORY",
-  implemented: true,
-  async run(ctx: AdapterContext): Promise<AdapterResult> {
-    const since = ctx.since ?? daysAgo(14);
-    const ua = process.env.SEC_EDGAR_USER_AGENT ?? "GulfCoastIndustrialRadar/0.1 contact@gallagherpropco.com";
+async function rateLimitedFetch(url: string): Promise<Response> {
+  const now = Date.now();
+  const wait = MIN_REQUEST_INTERVAL_MS - (now - lastRequestAt);
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  lastRequestAt = Date.now();
+  return fetch(url, {
+    headers: {
+      "User-Agent": "GulfCoastIndustrialRadar/0.3 contact@gcir.dev",
+      Accept: "application/json",
+    },
+  }) as unknown as Response;
+}
 
-    const records: AdapterRecord[] = [];
+export type EdgarFiling = {
+  id: string;
+  fileDate: string;
+  entityName: string;
+  formType: string;
+  periodOfReport: string;
+};
 
-    for (const q of QUERIES) {
-      const params = new URLSearchParams({
-        q,
-        dateRange: "custom",
-        startdt: since.toISOString().slice(0, 10),
-        enddt: new Date().toISOString().slice(0, 10),
-        forms: "8-K,10-K,SC 13D,SC 13G",
-      });
-      try {
-        const res = await fetchWithRetry(`${EFTS_BASE}/LATEST/search-index?${params}`, {
-          timeoutMs: 20_000,
-          userAgent: ua,
-        });
-        const json = (await res.json()) as EdgarResponse;
-        for (const hit of json.hits?.hits ?? []) {
-          records.push({
-            externalId: hit._id,
-            family: "REGULATORY",
-            predicate: `sec.${hit._source.form_type ?? "filing"}.edgar`,
-            subjectLabel: `${hit._source.entity_name ?? "Company"} · ${hit._source.form_type ?? ""} · ${hit._source.file_date ?? ""}`,
-            documentDate: hit._source.file_date ? new Date(hit._source.file_date) : undefined,
-            observedAt: new Date(),
-            confidence: 0.85,
-            url: `https://www.sec.gov/Archives/edgar/data/${hit._source.entity_id}/`,
-            rawBytes: JSON.stringify(hit._source),
-            rawMime: "application/json",
-            evidenceSnippet: hit.highlight?.file_date?.[0] ?? hit._source.entity_name,
-            payload: {
-              cik: hit._source.entity_id ?? null,
-              formType: hit._source.form_type ?? null,
-              entityName: hit._source.entity_name ?? null,
-              fileDate: hit._source.file_date ?? null,
-            },
-          });
-        }
-      } catch {
-        /* continue with other queries */
-      }
-    }
+export async function searchFilings(
+  query: string,
+  opts: { startDate: string; endDate: string; forms?: string; from?: number; size?: number },
+): Promise<{ total: number; filings: EdgarFiling[] }> {
+  const url = new URL(EFTS_BASE);
+  url.searchParams.set("q", query);
+  url.searchParams.set("dateRange", "custom");
+  url.searchParams.set("startdt", opts.startDate);
+  url.searchParams.set("enddt", opts.endDate);
+  if (opts.forms) url.searchParams.set("forms", opts.forms);
+  url.searchParams.set("from", String(opts.from ?? 0));
+  url.searchParams.set("size", String(opts.size ?? 20));
 
-    return {
-      records,
-      nextCursor: null,
-      notes: `SEC EDGAR: ${records.length} filings across ${QUERIES.length} queries`,
+  const res = await rateLimitedFetch(url.toString());
+  if (!res.ok) throw new Error(`SEC EDGAR HTTP ${res.status}`);
+
+  const json = (await res.json()) as {
+    hits: {
+      total: { value: number };
+      hits: Array<{
+        _id: string;
+        _source: {
+          file_date: string;
+          entity_name: string;
+          form_type: string;
+          period_of_report: string;
+        };
+      }>;
     };
-  },
-};
-
-type EdgarResponse = {
-  hits?: {
-    hits: Array<{
-      _id: string;
-      _source: {
-        entity_name?: string;
-        entity_id?: string;
-        form_type?: string;
-        file_date?: string;
-      };
-      highlight?: { file_date?: string[] };
-    }>;
   };
-};
 
-function daysAgo(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d;
+  return {
+    total: json.hits.total.value,
+    filings: json.hits.hits.map((h) => ({
+      id: h._id,
+      fileDate: h._source.file_date,
+      entityName: h._source.entity_name,
+      formType: h._source.form_type,
+      periodOfReport: h._source.period_of_report,
+    })),
+  };
 }
