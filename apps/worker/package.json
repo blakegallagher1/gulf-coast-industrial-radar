@@ -1,0 +1,27 @@
+{
+  "name": "@gcir/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node ./dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@gcir/adapters": "workspace:*",
+    "@gcir/agents": "workspace:*",
+    "@gcir/db": "workspace:*",
+    "@gcir/scoring": "workspace:*",
+    "@gcir/shared": "workspace:*",
+    "croner": "^9.0.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
