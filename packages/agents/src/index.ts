@@ -1,6 +1,13 @@
 export * from "./openai-client";
-export * from "./perplexity-client";
-export * from "./source-schema-researcher";
+export * as perplexity from "./perplexity-client";
+export * from "./source-watcher";
+export * from "./evidence-archive";
+export * from "./document-extraction";
+export * from "./entity-resolution";
+export * from "./site-scoring";
+export * from "./project-formation-scoring";
+export * from "./investor-action";
+export * from "./brief-writer";
+export * from "./analyst-review";
 export * from "./assembly-validator";
-export * from "./qlad-detector";
-export * from "./land-control-detector";
+export * from "./source-schema-researcher";
