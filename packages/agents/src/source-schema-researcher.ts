@@ -1,133 +1,154 @@
 /**
- * SourceSchemaResearcher — uses Perplexity to infer the JSON schema
- * of an industrial data source from its documentation / public spec.
+ * SourceSchemaResearcher — dev-time utility that uses Perplexity Agent API
+ * to research and recommend a data source schema (fields, types, sample
+ * values) for a given Gulf Coast industrial data category.
  *
- * Usage (CLI / pipeline):
- *   import { SourceSchemaResearcher } from "./source-schema-researcher";
- *   const r = new SourceSchemaResearcher();
- *   const schema = await r.inferSchema("EPA TRI Form R", "https://...");
+ * Usage:
+ *   npx tsx packages/agents/scripts/research-sources.ts "port-authority-leases"
  *
- * Calls the Perplexity Agent API via the helper in `perplexity-client.ts`.
- * Uses the "balanced" preset by default (pro-search, ~$0.005/call).
- * Switch to "deep" for complex / poorly documented sources.
+ * Output: writes JSON to packages/agents/data/schemas/<slug>.json
+ * and prints a Markdown summary to stdout.
+ *
+ * This is NOT a runtime agent — it runs once per data-source category
+ * during development to bootstrap the Prisma schema and Zod validators.
  */
 
+import { writeFileSync, mkdirSync } from "node:fs";
+import { resolve } from "node:path";
 import { z } from "zod";
-import * as perplexity from "./perplexity-client";
+import * as pplx from "./perplexity-client";
 
 // ---------------------------------------------------------------------------
-// Output schema
+// Schemas
 // ---------------------------------------------------------------------------
 
-const JsonSchemaNodeSchema: z.ZodType<JsonSchemaNode> = z.lazy(() =>
-  z.object({
-    type: z.string().optional(),
-    description: z.string().optional(),
-    properties: z.record(JsonSchemaNodeSchema).optional(),
-    items: JsonSchemaNodeSchema.optional(),
-    required: z.array(z.string()).optional(),
-    enum: z.array(z.unknown()).optional(),
-    format: z.string().optional(),
-    examples: z.array(z.unknown()).optional(),
-  })
-);
+const FieldSchema = z.object({
+  name: z.string(),
+  type: z.enum(["string", "number", "boolean", "date", "string[]", "number[]"]),
+  description: z.string(),
+  example: z.union([z.string(), z.number(), z.boolean(), z.null()]),
+  nullable: z.boolean(),
+  sourceColumn: z.string().optional(),
+});
 
-export interface JsonSchemaNode {
-  type?: string;
-  description?: string;
-  properties?: Record<string, JsonSchemaNode>;
-  items?: JsonSchemaNode;
-  required?: string[];
-  enum?: unknown[];
-  format?: string;
-  examples?: unknown[];
+const DataSourceSchemaResult = z.object({
+  category: z.string(),
+  description: z.string(),
+  primaryKeyField: z.string(),
+  fields: z.array(FieldSchema).min(3),
+  sampleSources: z.array(z.string()).min(1),
+  updateFrequency: z.enum(["realtime", "daily", "weekly", "monthly", "ad-hoc"]),
+  notes: z.string().optional(),
+});
+
+export type DataSourceSchema = z.infer<typeof DataSourceSchemaResult>;
+
+// ---------------------------------------------------------------------------
+// Prompts
+// ---------------------------------------------------------------------------
+
+function buildResearchPrompt(category: string): string {
+  return [
+    `You are a Gulf Coast industrial real-estate data architect.
+`,
+    `
+`,
+    `Research the data category: "${category}"
+`,
+    `
+`,
+    `Return a JSON object matching the DataSourceSchema schema:
+`,
+    `  category:         the normalised slug (lowercase-hyphen)
+`,
+    `  description:      one-sentence description of the data
+`,
+    `  primaryKeyField:  the best unique identifier field name
+`,
+    `  fields:           array of field definitions (at least 3)
+`,
+    `    name:           camelCase field name
+`,
+    `    type:           one of string | number | boolean | date | string[] | number[]
+`,
+    `    description:    what the field represents
+`,
+    `    example:        a realistic example value
+`,
+    `    nullable:       true if field may be absent
+`,
+    `    sourceColumn:   original column name in the source (if known)
+`,
+    `  sampleSources:    list of real public data sources (URLs or agency names)
+`,
+    `  updateFrequency:  one of realtime | daily | weekly | monthly | ad-hoc
+`,
+    `  notes:            any caveats or open questions (optional)
+`,
+  ].join("");
 }
 
-export const InferredSchemaSchema = z.object({
-  title: z.string(),
-  description: z.string().optional(),
-  schema: JsonSchemaNodeSchema,
-  confidence: z.number().min(0).max(1),
-  notes: z.string().optional(),
-  sources: z.array(z.string()),
-});
-export type InferredSchema = z.infer<typeof InferredSchemaSchema>;
+function schemaToMarkdown(schema: DataSourceSchema): string {
+  const lines: string[] = [
+    `# ${schema.category}`,
+    ``,
+    schema.description,
+    ``,
+    `**Primary key:** \`${schema.primaryKeyField}\`  `,
+    `**Update frequency:** ${schema.updateFrequency}`,
+    ``,
+    `## Fields`,
+    ``,
+    `| Field | Type | Nullable | Description |`,
+    `|-------|------|----------|-------------|`,
+    ...schema.fields.map(
+      (f) =>
+        `| \`${f.name}\` | \`${f.type}\` | ${f.nullable ? "yes" : "no"} | ${f.description} |`,
+    ),
+    ``,
+    `## Sample Sources`,
+    ``,
+    ...schema.sampleSources.map((s) => `- ${s}`),
+  ];
+
+  if (schema.notes) {
+    lines.push(``, `## Notes`, ``, schema.notes);
+  }
+
+  return lines.join("\n");
+}
 
 // ---------------------------------------------------------------------------
-// Researcher
+// Main export
 // ---------------------------------------------------------------------------
 
-const SYSTEM_PROMPT = `
-You are an expert in industrial data formats and regulatory reporting schemas.
-Given a data source name and optional URL, infer the likely JSON schema for records
-from that source, drawing on publicly available documentation, regulatory filings,
-and industry standards.
+export interface ResearchResult {
+  schema: DataSourceSchema;
+  markdown: string;
+  outputPath: string;
+}
 
-Include:
-  - Top-level fields with their types and descriptions
-  - Nested objects / arrays where appropriate
-  - Required fields
-  - Any enumerated values for categorical fields
-  - Confidence score (0–1) based on available documentation quality
+/**
+ * Research and persist a data source schema for the given category slug.
+ *
+ * @param category  e.g. "port-authority-leases", "industrial-permit-data"
+ * @param outDir    directory to write the JSON schema (default: packages/agents/data/schemas)
+ */
+export async function researchSourceSchema(
+  category: string,
+  outDir = resolve(__dirname, "../../data/schemas"),
+): Promise<ResearchResult> {
+  const schema = await pplx.structured(
+    DataSourceSchemaResult,
+    buildResearchPrompt(category),
+    "You are a strict data architect. Respond only with valid JSON. No markdown fences.",
+  );
 
-Respond ONLY with valid JSON matching the provided schema.
-`.trim();
+  const markdown = schemaToMarkdown(schema);
 
-export class SourceSchemaResearcher {
-  private readonly presetKey: perplexity.PresetKey;
+  mkdirSync(outDir, { recursive: true });
+  const outputPath = resolve(outDir, `${schema.category}.json`);
+  writeFileSync(outputPath, JSON.stringify(schema, null, 2), "utf8");
 
-  constructor(
-    opts: {
-      /**
-       * Preset key to use. Defaults to "balanced" (pro-search).
-       * Use "deep" for obscure or poorly documented sources.
-       */
-      preset?: perplexity.PresetKey;
-    } = {}
-  ) {
-    this.presetKey = opts.preset ?? "balanced";
-  }
-
-  async inferSchema(
-    sourceName: string,
-    sourceUrl?: string
-  ): Promise<InferredSchema> {
-    const parts = [
-      `Infer the JSON schema for records from the following industrial data source:`,
-      `Name: ${sourceName}`,
-    ];
-    if (sourceUrl) {
-      parts.push(`URL: ${sourceUrl}`);
-    }
-    parts.push(
-      "",
-      "Return a JSON object with: title, description, schema, confidence, notes, sources."
-    );
-
-    const prompt = parts.join("\n");
-
-    return perplexity.structured(prompt, InferredSchemaSchema, {
-      preset: this.presetKey,
-      systemPrompt: SYSTEM_PROMPT,
-    });
-  }
-
-  /**
-   * Research multiple sources in parallel (capped at 3 concurrent to stay
-   * within the Perplexity rate limit).
-   */
-  async inferSchemas(
-    sources: Array<{ name: string; url?: string }>,
-    concurrency = 3
-  ): Promise<InferredSchema[]> {
-    const results: InferredSchema[] = [];
-    for (let i = 0; i < sources.length; i += concurrency) {
-      const batch = sources.slice(i, i + concurrency);
-      const batchResults = await Promise.all(
-        batch.map((s) => this.inferSchema(s.name, s.url))
-      );
-      results.push(...batchResults);
-    }
-    return results;
-  }
+  return { schema, markdown, outputPath };
 }

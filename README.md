@@ -1,76 +1,108 @@
-# Gulf Coast Industrial Radar (GCIR)
+# Gulf Coast Industrial Radar
 
-A full-stack monorepo for tracking, validating, and analysing Gulf Coast industrial
-facilities, assemblies, and regulatory data.
+Detect Gulf Coast industrial demand and site-control opportunities before they
+become public knowledge.
 
-## Stack
+## What It Does
 
-- **Framework**: Next.js 14 (App Router)
-- **Database**: PostgreSQL via Prisma
-- **AI / Research**: OpenAI (GPT-4o-mini) + Perplexity Agent API
-- **Monorepo**: pnpm workspaces + Turborepo
-- **Testing**: Vitest
+GCIR is a **Quiet Land Assembly Detection (QLAD)** system that:
 
-## Getting started
+1. **Ingests** parcel, permit, port-authority, and broker-listing data for
+   Gulf Coast industrial submarkets (Houston Ship Channel, Beaumont, Lake
+   Charles, etc.).
+2. **Detects** emerging land assemblies using spatial clustering and ownership
+   graph analysis.
+3. **Validates** each assembly with a two-step Perplexity Agent API pass
+   (structured field verification + freeform enrichment research).
+4. **Surfaces** opportunities through a Next.js dashboard with map overlays,
+   confidence scores, and historical trends.
+
+## Architecture
+
+```
+gulf-coast-industrial-radar/
+├── apps/
+│   └── web/                  Next.js 15 app (dashboard + API routes)
+├── packages/
+│   ├── agents/               AI agent layer
+│   │   ├── src/
+│   │   │   ├── perplexity-client.ts   Perplexity Agent API (presets, cache, budget)
+│   │   │   ├── assembly-validator.ts  2-step assembly validation agent
+│   │   │   ├── source-schema-researcher.ts  Dev-time schema research utility
+│   │   │   └── openai-client.ts       OpenAI structured-extraction helper
+│   │   ├── scripts/
+│   │   │   └── research-sources.ts   CLI orchestrator for schema research
+│   │   └── test/
+│   │       ├── assembly-validator.test.ts
+│   │       └── qlad-pipeline.test.ts
+│   └── db/                   Prisma schema + generated client
+│       └── prisma/
+│           └── schema.prisma
+└── .env.example
+```
+
+## Quick Start
 
 ```bash
-# 1. Install dependencies
+# Install dependencies
 pnpm install
 
-# 2. Copy env template
-cp .env.example .env
-# Fill in DATABASE_URL, OPENAI_API_KEY, PERPLEXITY_API_KEY at minimum.
+# Copy env template
+cp .env.example .env.local
+# Edit .env.local with real credentials
 
-# 3. Push the DB schema
-pnpm db:push
+# Start Postgres (Docker Compose)
+docker compose up -d postgres
 
-# 4. Run the dev server
+# Run DB migrations
+pnpm --filter @gcir/db db:push
+
+# Start dev server
 pnpm dev
 ```
 
-## Perplexity preset routing
+## Perplexity Integration
 
-GCIR routes Perplexity calls through named **presets** rather than raw model IDs.
-Each preset bundles a model, tool config, and step budget:
+GCIR uses the **Perplexity Agent API** (POST `/v1/agent`) via three presets:
 
-| Preset key | API preset string | Approx cost | When used |
-|------------|-------------------|-------------|------------------------------|
-| `fast` | `fast-research` | ~$0.002/call | Simple, known-schema lookups |
-| `balanced` | `pro-search` | ~$0.005/call | Default — most calls |
-| `deep` | `deep-research` | ~$0.015/call | Multi-step research tasks |
+| Preset constant | Preset ID | Use case |
+|---|---|---|
+| `PPLX_PRESETS.structured` | `gcir-structured-extraction` | Validate assembly fields against public records |
+| `PPLX_PRESETS.search` | `gcir-web-search` | Freeform enrichment research with live web search |
+| `PPLX_PRESETS.deepResearch` | `gcir-deep-research` | Multi-step deep research (10 reasoning steps) |
 
-### How to enable
+Configure presets in the [Perplexity dashboard](https://www.perplexity.ai/settings/api/presets)
+and set the corresponding env vars in `.env.local` (see `.env.example`).
 
-1. Set `PERPLEXITY_API_KEY` in `.env`.
-2. Optionally override the default preset: `PERPLEXITY_DEFAULT_PRESET=fast-research`.
-3. Optionally set a daily spend cap: `PERPLEXITY_DAILY_BUDGET_USD=5.00`.
+### Budget Guard
 
-See [`packages/agents/src/perplexity-client.ts`](packages/agents/src/perplexity-client.ts)
-for the full implementation including caching, telemetry, and cost estimation.
+Set `PERPLEXITY_DAILY_BUDGET_USD` to cap daily spend. The client checks
+`AgentRun.costUsd` totals before every call and throws if the cap is reached.
 
-## Packages
+### Cache Layer
 
-| Package | Description |
-|---------|-------------|
-| `apps/web` | Next.js web application |
-| `packages/agents` | AI agent clients (OpenAI, Perplexity) + pipelines |
-| `packages/db` | Prisma schema + client |
-| `packages/ui` | Shared React components |
+Responses are cached in the `PerplexityCache` table (7-day TTL, keyed by
+`sha256(preset + prompt)`). Target hit rate: >40% on AssemblyValidator calls.
 
-## Testing
+## Running Tests
 
 ```bash
-# Run all tests
-pnpm test
-
-# Run agent tests only
 pnpm --filter @gcir/agents test
 ```
 
-## Environment variables
+Tests mock `@gcir/db` and `perplexity-client`, so no real credentials are
+needed.
 
-See [`.env.example`](.env.example) for the full list with descriptions.
+## Environment Variables
 
-## Licence
+See `.env.example` for the full list with descriptions. Key vars:
 
-MIT
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DATABASE_URL` | Yes | — | Postgres connection string |
+| `OPENAI_API_KEY` | Yes | — | OpenAI API key |
+| `PERPLEXITY_API_KEY` | Yes | — | Perplexity API key |
+| `PERPLEXITY_DAILY_BUDGET_USD` | No | `5.00` | Daily spend cap (USD) |
+| `PPLX_PRESET_STRUCTURED` | No | `gcir-structured-extraction` | Structured-extraction preset ID |
+| `PPLX_PRESET_SEARCH` | No | `gcir-web-search` | Web-search preset ID |
+| `PPLX_PRESET_DEEP_RESEARCH` | No | `gcir-deep-research` | Deep-research preset ID |

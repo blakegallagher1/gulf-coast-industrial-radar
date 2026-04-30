@@ -1,103 +1,189 @@
 /**
- * AssemblyValidator — validates a parsed assembly object against
- * live source data fetched via Perplexity (balanced / pro-search preset).
+ * AssemblyValidatorAgent — 2-step Perplexity pass on every Quiet Land Assembly
+ * district that meets the qlad-pipeline threshold.
  *
- * Usage:
- *   import { AssemblyValidator } from "./assembly-validator";
- *   const v = new AssemblyValidator();
- *   const result = await v.validate(assembly);
+ * Step 1 – structured(): Validate structured fields (acreage, zoning,
+ *   utilities, entitlement status) against public records.
+ * Step 2 – text(): Enrich with a freeform research note (recent permits,
+ *   owner history, market comps).
+ *
+ * The validated/enriched assembly is written back to the DB and a
+ * ValidationResult row is created for audit.
  */
 
 import { z } from "zod";
-import * as perplexity from "./perplexity-client";
+import { prisma } from "@gcir/db";
+import * as pplx from "./perplexity-client";
 
 // ---------------------------------------------------------------------------
-// Schema
+// Schemas
 // ---------------------------------------------------------------------------
 
-export const ValidationFindingSchema = z.object({
-  field: z.string(),
-  expected: z.unknown(),
-  actual: z.unknown().optional(),
+const AssemblySchema = z.object({
+  id: z.string().uuid(),
+  districtName: z.string(),
+  totalAcreage: z.number().positive(),
+  zoningCodes: z.array(z.string()),
+  utilityStatus: z.enum(["available", "nearby", "unavailable", "unknown"]),
+  entitlementStatus: z.enum(["entitled", "pending", "unentitled", "unknown"]),
+  lastSaleDate: z.string().nullable(),
+  ownerCount: z.number().int().nonnegative(),
+});
+
+type Assembly = z.infer<typeof AssemblySchema>;
+
+const ValidationResultSchema = z.object({
+  fieldErrors: z.record(z.string()).optional(),
   confidence: z.number().min(0).max(1),
   notes: z.string().optional(),
 });
-export type ValidationFinding = z.infer<typeof ValidationFindingSchema>;
 
-export const ValidationResultSchema = z.object({
-  valid: z.boolean(),
-  score: z.number().min(0).max(1),
-  findings: z.array(ValidationFindingSchema),
-  sources: z.array(z.string()),
-  presetUsed: z.string(),
-  latencyMs: z.number().optional(),
-});
-export type ValidationResult = z.infer<typeof ValidationResultSchema>;
+type ValidationResult = z.infer<typeof ValidationResultSchema>;
 
 // ---------------------------------------------------------------------------
-// Validator
+// Prompts
 // ---------------------------------------------------------------------------
 
-const VALIDATION_SCHEMA = z.object({
-  valid: z.boolean(),
-  score: z.number().min(0).max(1),
-  findings: z.array(ValidationFindingSchema),
-  sources: z.array(z.string()),
-});
+function buildStructuredPrompt(assembly: Assembly): string {
+  return [
+    `You are a commercial real-estate data validator.
+`,
+    `Validate the following Quiet Land Assembly district record against public
+`,
+    `county records, GIS data, and permit databases. Return JSON matching the
+`,
+    `ValidationResult schema.
+`,
+    `
+`,
+    `Record:
+`,
+    JSON.stringify(assembly, null, 2),
+    `
+`,
+    `Schema fields:
+`,
+    `  fieldErrors: object mapping field name → error description (omit if valid)
+`,
+    `  confidence:  float 0–1 reflecting overall data quality
+`,
+    `  notes:       brief plain-text summary (optional)
+`,
+  ].join("");
+}
 
-const SYSTEM_PROMPT = `
-You are a Gulf Coast industrial data validator. You are given a parsed assembly object
-(JSON) and must verify its key fields against publicly available sources.
+function buildEnrichmentPrompt(assembly: Assembly): string {
+  return [
+    `Research the following Gulf Coast industrial land assembly and return a
+`,
+    `concise paragraph (3–5 sentences) covering:
+`,
+    `  - Recent permit activity (last 24 months)
+`,
+    `  - Known ownership consolidation history
+`,
+    `  - Comparable industrial land sales in the submarket
+`,
+    `
+`,
+    `Assembly: ${assembly.districtName} (${assembly.totalAcreage} ac)
+`,
+    `Zoning: ${assembly.zoningCodes.join(", ")}
+`,
+    `Entitlement: ${assembly.entitlementStatus}
+`,
+  ].join("");
+}
 
-For each field, determine whether the value is:
-  - correct: matches public records / databases
-  - plausible but unverified: no contradicting evidence found
-  - likely wrong: contradicts a reliable source
-  - unknown: insufficient public data
+// ---------------------------------------------------------------------------
+// Agent
+// ---------------------------------------------------------------------------
 
-Respond ONLY with valid JSON matching the provided schema.
-`.trim();
+export interface AssemblyValidatorResult {
+  assemblyId: string;
+  validation: ValidationResult;
+  enrichmentNote: string;
+  durationMs: number;
+}
 
-export class AssemblyValidator {
-  private readonly presetKey: perplexity.PresetKey;
+/**
+ * Validate and enrich a single assembly record.
+ * Writes a ValidationResult row and updates the Assembly's `validated` flag.
+ */
+export async function validateAssembly(
+  assemblyId: string,
+): Promise<AssemblyValidatorResult> {
+  const t0 = Date.now();
 
-  constructor(
-    opts: {
-      /**
-       * Preset to use for validation calls.
-       * Defaults to "balanced" (pro-search) — good accuracy / cost balance.
-       * Was previously "fast" but pro-search gives better field verification.
-       */
-      preset?: perplexity.PresetKey;
-    } = {}
-  ) {
-    this.presetKey = opts.preset ?? "balanced";
+  // Fetch from DB
+  const row = await prisma.assembly.findUniqueOrThrow({
+    where: { id: assemblyId },
+    select: {
+      id: true,
+      districtName: true,
+      totalAcreage: true,
+      zoningCodes: true,
+      utilityStatus: true,
+      entitlementStatus: true,
+      lastSaleDate: true,
+      ownerCount: true,
+    },
+  });
+
+  const assembly = AssemblySchema.parse(row);
+
+  // Step 1 — structured validation
+  const validation = await pplx.structured(
+    ValidationResultSchema,
+    buildStructuredPrompt(assembly),
+    "You are a strict commercial real-estate data auditor. Respond only with valid JSON.",
+  );
+
+  // Step 2 — freeform enrichment
+  const enrichmentNote = await pplx.text(
+    buildEnrichmentPrompt(assembly),
+    "You are a Gulf Coast industrial real-estate analyst. Be concise and factual.",
+  );
+
+  const durationMs = Date.now() - t0;
+
+  // Persist ValidationResult
+  await prisma.validationResult.create({
+    data: {
+      assemblyId,
+      confidence: validation.confidence,
+      fieldErrors: validation.fieldErrors ?? {},
+      notes: validation.notes ?? "",
+      enrichmentNote,
+      durationMs,
+    },
+  });
+
+  // Mark assembly validated
+  await prisma.assembly.update({
+    where: { id: assemblyId },
+    data: { validated: true, validatedAt: new Date() },
+  });
+
+  return { assemblyId, validation, enrichmentNote, durationMs };
+}
+
+/**
+ * Batch-validate all assemblies that have not yet been validated.
+ * Returns results in insertion order.
+ */
+export async function validatePendingAssemblies(): Promise<
+  AssemblyValidatorResult[]
+> {
+  const pending = await prisma.assembly.findMany({
+    where: { validated: false },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+
+  const results: AssemblyValidatorResult[] = [];
+  for (const { id } of pending) {
+    results.push(await validateAssembly(id));
   }
-
-  async validate(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    assembly: Record<string, any>
-  ): Promise<ValidationResult> {
-    const start = Date.now();
-    const preset = perplexity.resolvePreset(this.presetKey);
-
-    const prompt = [
-      "Validate the following Gulf Coast industrial assembly object.",
-      "Return a JSON object with valid, score (0–1), findings[], and sources[].",
-      "",
-      "Assembly JSON:",
-      JSON.stringify(assembly, null, 2),
-    ].join("\n");
-
-    const raw = await perplexity.structured(prompt, VALIDATION_SCHEMA, {
-      preset: this.presetKey,
-      systemPrompt: SYSTEM_PROMPT,
-    });
-
-    return {
-      ...raw,
-      presetUsed: preset,
-      latencyMs: Date.now() - start,
-    };
-  }
+  return results;
 }

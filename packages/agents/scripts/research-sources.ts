@@ -1,44 +1,35 @@
 #!/usr/bin/env tsx
 /**
- * CLI script: research a list of Gulf Coast industrial data sources
- * and print their inferred JSON schemas.
+ * scripts/research-sources.ts — orchestrator that runs SourceSchemaResearcher
+ * for one or more data categories provided as CLI args.
  *
  * Usage:
- *   pnpm tsx packages/agents/scripts/research-sources.ts [--preset fast|balanced|deep]
- *
- * Calls the Perplexity Agent API via SourceSchemaResearcher.
- * Default preset: balanced (pro-search, ~$0.005/source).
+ *   npx tsx packages/agents/scripts/research-sources.ts \
+ *     port-authority-leases industrial-permit-data heavy-haul-corridors
  */
 
-import { SourceSchemaResearcher } from "../src/source-schema-researcher";
-import type { PresetKey } from "../src/perplexity-client";
+import { researchSourceSchema } from "../src/source-schema-researcher";
 
-const SOURCES = [
-  { name: "EPA TRI Form R", url: "https://www.epa.gov/toxics-release-inventory-tri-program" },
-  { name: "TCEQ Air Quality Permits", url: "https://www.tceq.texas.gov/airquality/permits" },
-  { name: "BOEM Gulf of Mexico Lease Sales", url: "https://www.boem.gov/oil-gas-energy/leasing" },
-  { name: "EIA-914 Natural Gas Production Report" },
-  { name: "PHMSA Hazmat Incident Reports" },
-];
+const categories = process.argv.slice(2);
 
-async function main() {
-  const presetArg = process.argv.find((a) => a.startsWith("--preset="));
-  const preset = (presetArg?.split("=")[1] ?? "balanced") as PresetKey;
-
-  console.log(`\nResearching ${SOURCES.length} sources with preset: ${preset}\n`);
-
-  const researcher = new SourceSchemaResearcher({ preset });
-  const schemas = await researcher.inferSchemas(SOURCES);
-
-  for (const s of schemas) {
-    console.log(`\n--- ${s.title} (confidence: ${s.confidence}) ---`);
-    console.log(JSON.stringify(s.schema, null, 2));
-    if (s.notes) console.log(`Notes: ${s.notes}`);
-    if (s.sources.length) console.log(`Sources: ${s.sources.join(", ")}`);
-  }
+if (categories.length === 0) {
+  console.error(
+    "Usage: research-sources.ts <category> [<category> ...]\n" +
+      'Example: research-sources.ts port-authority-leases industrial-permit-data',
+  );
+  process.exit(1);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+(async () => {
+  for (const cat of categories) {
+    console.log(`\n## Researching: ${cat}`);
+    try {
+      const { markdown, outputPath } = await researchSourceSchema(cat);
+      console.log(markdown);
+      console.log(`\n✓ Written to ${outputPath}`);
+    } catch (err) {
+      console.error(`Error researching ${cat}:`, err);
+      process.exitCode = 1;
+    }
+  }
+})();

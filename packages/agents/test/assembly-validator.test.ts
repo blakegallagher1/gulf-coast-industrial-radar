@@ -1,91 +1,131 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AssemblyValidator } from "../src/assembly-validator";
-import * as perplexity from "../src/perplexity-client";
+/**
+ * AssemblyValidator unit test — mocks the Perplexity client to verify
+ * the two-step validation flow without real API calls.
+ *
+ * Covers:
+ *   1. Happy path: both steps succeed, DB writes are made.
+ *   2. Budget exhausted: assertBudget throws → validateAssembly rejects.
+ *   3. Structured parse failure: bad JSON from pplx.structured → rejects.
+ */
 
-vi.mock("../src/perplexity-client", () => ({
-  structured: vi.fn(),
-  resolvePreset: vi.fn((key: string) => `${key}-research`),
-  PRESETS: {
-    fast: "fast-research",
-    balanced: "pro-search",
-    deep: "deep-research",
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { validateAssembly } from "../src/assembly-validator";
+
+// ---------------------------------------------------------------------------
+// Mocks
+// ---------------------------------------------------------------------------
+
+vi.mock("@gcir/db", () => ({
+  prisma: {
+    assembly: {
+      findUniqueOrThrow: vi.fn(),
+      update: vi.fn(),
+    },
+    validationResult: {
+      create: vi.fn(),
+    },
+    agentRun: {
+      aggregate: vi.fn().mockResolvedValue({ _sum: { costUsd: 0 } }),
+      create: vi.fn(),
+    },
+    perplexityCache: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn(),
+    },
   },
 }));
 
-describe("AssemblyValidator", () => {
+vi.mock("../src/perplexity-client", () => ({
+  structured: vi.fn(),
+  text: vi.fn(),
+  deepResearch: vi.fn(),
+  PPLX_PRESETS: {
+    structured: "gcir-structured-extraction",
+    search: "gcir-web-search",
+    deepResearch: "gcir-deep-research",
+  },
+}));
+
+const { prisma } = await import("@gcir/db");
+const pplx = await import("../src/perplexity-client");
+
+// ---------------------------------------------------------------------------
+// Fixture
+// ---------------------------------------------------------------------------
+
+const ASSEMBLY_FIXTURE = {
+  id: "00000000-0000-0000-0000-000000000001",
+  districtName: "Bayou Industrial Corridor",
+  totalAcreage: 120.5,
+  zoningCodes: ["I-2", "I-3"],
+  utilityStatus: "available",
+  entitlementStatus: "entitled",
+  lastSaleDate: "2024-01-15",
+  ownerCount: 3,
+};
+
+const VALIDATION_RESULT_FIXTURE = {
+  fieldErrors: {},
+  confidence: 0.92,
+  notes: "All fields match county records.",
+};
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe("validateAssembly", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (prisma.assembly.findUniqueOrThrow as ReturnType<typeof vi.fn>)
+      .mockResolvedValue(ASSEMBLY_FIXTURE);
+    (prisma.assembly.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (prisma.validationResult.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (prisma.agentRun.aggregate as ReturnType<typeof vi.fn>)
+      .mockResolvedValue({ _sum: { costUsd: 0 } });
+    (prisma.agentRun.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (prisma.perplexityCache.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (prisma.perplexityCache.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({});
   });
 
-  const sampleAssembly = {
-    facilityName: "Motiva Port Arthur Refinery",
-    naicsCode: "324110",
-    latitude: 29.8833,
-    longitude: -93.9244,
-    operatorName: "Motiva Enterprises",
-    state: "TX",
-  };
+  it("happy path: validates and enriches an assembly", async () => {
+    (pplx.structured as ReturnType<typeof vi.fn>)
+      .mockResolvedValue(VALIDATION_RESULT_FIXTURE);
+    (pplx.text as ReturnType<typeof vi.fn>)
+      .mockResolvedValue("Recent permits show warehouse expansion activity.");
 
-  it("returns a valid ValidationResult on success", async () => {
-    vi.mocked(perplexity.structured).mockResolvedValue({
-      valid: true,
-      score: 0.92,
-      findings: [
-        {
-          field: "facilityName",
-          expected: "Motiva Port Arthur Refinery",
-          actual: "Motiva Port Arthur Refinery",
-          confidence: 0.98,
-        },
-      ],
-      sources: ["https://www.motiva.com/locations/port-arthur"],
-    });
+    const result = await validateAssembly(ASSEMBLY_FIXTURE.id);
 
-    const validator = new AssemblyValidator();
-    const result = await validator.validate(sampleAssembly);
+    expect(result.assemblyId).toBe(ASSEMBLY_FIXTURE.id);
+    expect(result.validation.confidence).toBe(0.92);
+    expect(result.enrichmentNote).toContain("warehouse");
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
 
-    expect(result.valid).toBe(true);
-    expect(result.score).toBeGreaterThan(0.8);
-    expect(result.findings).toHaveLength(1);
-    expect(result.presetUsed).toBe("balanced-research");
-    expect(result.latencyMs).toBeGreaterThanOrEqual(0);
-  });
-
-  it("defaults to balanced preset", () => {
-    const validator = new AssemblyValidator();
-    // presetKey is private but resolvePreset is called during validate
-    expect(validator).toBeDefined();
-  });
-
-  it("accepts a custom preset override", async () => {
-    vi.mocked(perplexity.structured).mockResolvedValue({
-      valid: false,
-      score: 0.4,
-      findings: [
-        {
-          field: "latitude",
-          expected: 29.8833,
-          actual: 29.5,
-          confidence: 0.7,
-          notes: "Coordinates off by ~40 km",
-        },
-      ],
-      sources: [],
-    });
-
-    const validator = new AssemblyValidator({ preset: "deep" });
-    const result = await validator.validate(sampleAssembly);
-    expect(result.valid).toBe(false);
-    expect(result.presetUsed).toBe("deep-research");
-  });
-
-  it("propagates errors from perplexity.structured", async () => {
-    vi.mocked(perplexity.structured).mockRejectedValue(
-      new Error("Budget exhausted")
+    expect(prisma.validationResult.create).toHaveBeenCalledOnce();
+    expect(prisma.assembly.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: ASSEMBLY_FIXTURE.id },
+        data: expect.objectContaining({ validated: true }),
+      }),
     );
-    const validator = new AssemblyValidator();
-    await expect(validator.validate(sampleAssembly)).rejects.toThrow(
-      "Budget exhausted"
+  });
+
+  it("rejects when structured() throws (e.g. budget exhausted)", async () => {
+    (pplx.structured as ReturnType<typeof vi.fn>)
+      .mockRejectedValue(new Error("Perplexity daily budget exhausted"));
+
+    await expect(validateAssembly(ASSEMBLY_FIXTURE.id)).rejects.toThrow(
+      "Perplexity daily budget exhausted",
     );
+
+    expect(prisma.validationResult.create).not.toHaveBeenCalled();
+    expect(prisma.assembly.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects when structured() returns bad JSON shape", async () => {
+    (pplx.structured as ReturnType<typeof vi.fn>)
+      .mockRejectedValue(new SyntaxError("Unexpected token"));
+
+    await expect(validateAssembly(ASSEMBLY_FIXTURE.id)).rejects.toThrow();
   });
 });

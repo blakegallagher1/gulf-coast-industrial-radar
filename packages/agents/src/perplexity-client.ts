@@ -38,50 +38,42 @@ const client = new Perplexity({
  * Preset routing for runtime calls. Each key maps to a Perplexity Agent API
  * preset (NOT a model id). The preset bundles a chosen model + tools +
  * step budget + tuned system prompt — better defaults than picking a
- * raw model string.
- *
- * Override at runtime via PERPLEXITY_DEFAULT_PRESET env var.
+ * raw model.
  */
-export const PRESETS = {
-  /** Fast, cheap, good for known-schema lookups. ~$0.002/call */
-  fast: "fast-research",
-  /** Balanced — 3 reasoning steps, web_search enabled. ~$0.005/call */
-  balanced: "pro-search",
-  /** Deep multi-step research. ~$0.015–0.03/call */
-  deep: "deep-research",
+export const PPLX_PRESETS = {
+  /** Fast structured extraction — sonar-pro, no web search, 3 reasoning steps */
+  structured: "gcir-structured-extraction",
+  /** Live web search with sonar-pro (default text tasks) */
+  search: "gcir-web-search",
+  /** Deep multi-step research — 10 steps, gpt-5.2, web_search + fetch_url */
+  deepResearch: "gcir-deep-research",
 } as const;
 
-export type PresetKey = keyof typeof PRESETS;
-
-/** Returns the preset string, honouring the env override. */
-export function resolvePreset(key: PresetKey = "balanced"): string {
-  const envOverride = process.env.PERPLEXITY_DEFAULT_PRESET;
-  if (envOverride && Object.values(PRESETS).includes(envOverride as string)) {
-    return envOverride;
-  }
-  return PRESETS[key];
-}
+export type PplxPreset = (typeof PPLX_PRESETS)[keyof typeof PPLX_PRESETS];
 
 // ---------------------------------------------------------------------------
-// Cost budget guard
+// Budget guard
 // ---------------------------------------------------------------------------
 
-async function checkDailyBudget(): Promise<void> {
-  const cap = parseFloat(process.env.PERPLEXITY_DAILY_BUDGET_USD ?? "5.00");
-  if (!isFinite(cap) || cap <= 0) return; // budget disabled
+async function assertBudget(): Promise<void> {
+  const cap = parseFloat(process.env.PERPLEXITY_DAILY_BUDGET_USD ?? "5");
+  if (!isFinite(cap) || cap <= 0) return; // no cap configured
 
-  const since = new Date();
-  since.setUTCHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
 
   const agg = await prisma.agentRun.aggregate({
-    where: { provider: "perplexity", createdAt: { gte: since } },
     _sum: { costUsd: true },
+    where: {
+      provider: "perplexity",
+      createdAt: { gte: today },
+    },
   });
 
   const spent = agg._sum.costUsd?.toNumber() ?? 0;
   if (spent >= cap) {
     throw new Error(
-      `Perplexity daily budget exhausted: $${spent.toFixed(4)} >= cap $${cap.toFixed(2)}`
+      `Perplexity daily budget exhausted (spent $${spent.toFixed(4)} of $${cap})`,
     );
   }
 }
@@ -91,204 +83,151 @@ async function checkDailyBudget(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 function cacheKey(preset: string, prompt: string): string {
-  return createHash("sha256")
-    .update(`${preset}:${prompt}`)
-    .digest("hex")
-    .slice(0, 64);
+  return createHash("sha256").update(`${preset}\0${prompt}`).digest("hex");
 }
 
 async function fromCache(key: string): Promise<string | null> {
   const ttl = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const row = await prisma.perplexityCache.findFirst({
-    where: { key, updatedAt: { gte: ttl } },
+    where: { cacheKey: key, createdAt: { gte: ttl } },
   });
-  return row?.value ?? null;
+  return row?.response ?? null;
 }
 
-async function toCache(key: string, value: string): Promise<void> {
+async function toCache(key: string, response: string): Promise<void> {
   await prisma.perplexityCache.upsert({
-    where: { key },
-    create: { key, value },
-    update: { value, updatedAt: new Date() },
+    where: { cacheKey: key },
+    create: { cacheKey: key, response },
+    update: { response, createdAt: new Date() },
   });
 }
 
 // ---------------------------------------------------------------------------
-// Core call helper
+// Core call
 // ---------------------------------------------------------------------------
 
 interface CallOptions {
-  preset?: PresetKey;
+  preset: PplxPreset;
   systemPrompt?: string;
-  /** If true, skip cache read/write (useful for streaming or one-off calls) */
+  userPrompt: string;
+  /** If provided the response is validated against this schema */
+  schema?: ZodSchema<unknown, ZodTypeDef, unknown>;
+  /** Skip DB cache (useful for time-sensitive queries) */
   noCache?: boolean;
-  /** Additional tools to enable beyond the preset defaults */
-  tools?: Array<{ type: string; [key: string]: unknown }>;
 }
 
-async function call(
-  userPrompt: string,
-  opts: CallOptions = {}
-): Promise<string> {
-  await checkDailyBudget();
+async function call(opts: CallOptions): Promise<string> {
+  await assertBudget();
 
-  const preset = resolvePreset(opts.preset);
-  const key = cacheKey(preset, userPrompt);
-
+  const key = cacheKey(opts.preset, opts.userPrompt);
   if (!opts.noCache) {
     const cached = await fromCache(key);
     if (cached) return cached;
   }
 
-  const start = Date.now();
+  const t0 = Date.now();
 
-  const messages: Array<{ role: string; content: string }> = [];
+  const messages: { role: string; content: string }[] = [];
   if (opts.systemPrompt) {
     messages.push({ role: "system", content: opts.systemPrompt });
   }
-  messages.push({ role: "user", content: userPrompt });
+  messages.push({ role: "user", content: opts.userPrompt });
 
-  // The Agent API uses `preset` (not `model`) to select bundled capabilities.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const body: Record<string, any> = {
-    preset,
+  const reqBody: Record<string, unknown> = {
+    preset: opts.preset,
     input: messages,
   };
-  if (opts.tools?.length) {
-    body.tools = opts.tools;
-  }
 
-  const response = await (client as any).responses.create(body);
-
-  const latencyMs = Date.now() - start;
-  const text: string =
-    (response as any).output_text ??
-    (response as any).choices?.[0]?.message?.content ??
-    "";
-  const costUsd: number =
-    (response as any).usage?.cost_usd ??
-    (response as any).usage?.total_cost ??
-    0;
-
-  // Fire-and-forget telemetry
-  void prisma.agentRun
-    .create({
-      data: {
-        provider: "perplexity",
-        model: preset,
-        costUsd,
-        latencyMs,
-        promptTokens: (response as any).usage?.prompt_tokens ?? 0,
-        completionTokens: (response as any).usage?.completion_tokens ?? 0,
+  if (opts.schema) {
+    reqBody.text = {
+      format: {
+        type: "json_schema",
+        json_schema: {
+          name: "output",
+          strict: true,
+          schema: zodToJsonSchema(opts.schema),
+        },
       },
-    })
-    .catch(() => void 0);
-
-  if (!opts.noCache) {
-    void toCache(key, text).catch(() => void 0);
+    };
   }
+
+  // @ts-expect-error — SDK types lag behind API; preset field is valid
+  const resp = await client.responses.create(reqBody);
+
+  const latencyMs = Date.now() - t0;
+  const text: string = resp.output_text ?? "";
+  const costUsd: number = (resp as Record<string, unknown>).usage
+    ? ((resp as Record<string, unknown>).usage as Record<string, number>)
+        .total_tokens / 1_000_000
+    : 0;
+
+  // Telemetry
+  await prisma.agentRun.create({
+    data: {
+      provider: "perplexity",
+      model: opts.preset,
+      promptTokens:
+        (resp.usage as Record<string, number> | undefined)?.input_tokens ?? 0,
+      completionTokens:
+        (resp.usage as Record<string, number> | undefined)?.output_tokens ?? 0,
+      costUsd,
+      latencyMs,
+    },
+  });
+
+  if (!opts.noCache) await toCache(key, text);
 
   return text;
 }
 
 // ---------------------------------------------------------------------------
-// Public surface
+// Public API
 // ---------------------------------------------------------------------------
 
 /**
- * Run a structured (JSON) agent call and parse the result with a Zod schema.
+ * Run a structured (JSON-schema validated) agent call.
  *
- * @example
- * const result = await perplexity.structured(
- *   "List the top 3 Gulf Coast refineries",
- *   z.array(z.object({ name: z.string(), barrels: z.number() }))
- * );
+ * @throws {z.ZodError} if the response doesn't match the schema
  */
 export async function structured<T>(
-  prompt: string,
   schema: ZodSchema<T, ZodTypeDef, unknown>,
-  opts: CallOptions & { retries?: number } = {}
+  userPrompt: string,
+  systemPrompt?: string,
 ): Promise<T> {
-  const retries = opts.retries ?? 2;
-  const jsonSchema = zodToJsonSchema(schema);
-
-  const systemPrompt =
-    opts.systemPrompt ??
-    `You are a precise JSON extractor. Respond ONLY with valid JSON matching this schema:\n${JSON.stringify(jsonSchema, null, 2)}`;
-
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const raw = await call(prompt, {
-      ...opts,
-      systemPrompt,
-      // Cache miss on retry so we get a fresh response
-      noCache: attempt > 0 ? true : opts.noCache,
-    });
-
-    // Strip code fences if present
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```\s*$/i, "")
-      .trim();
-
-    try {
-      const parsed = JSON.parse(cleaned) as unknown;
-      return schema.parse(parsed);
-    } catch (err) {
-      lastErr = err;
-    }
-  }
-
-  throw new Error(
-    `perplexity.structured failed after ${retries + 1} attempts: ${String(lastErr)}`
-  );
+  const raw = await call({
+    preset: PPLX_PRESETS.structured,
+    userPrompt,
+    systemPrompt,
+    schema,
+  });
+  return schema.parse(JSON.parse(raw));
 }
 
 /**
- * Run a plain-text agent call (web_search enabled by default via preset).
- *
- * @example
- * const summary = await perplexity.text(
- *   "What are the current crude oil prices in the Gulf Coast region?"
- * );
+ * Run a plain-text agent call with web search enabled.
  */
 export async function text(
-  prompt: string,
-  opts: CallOptions = {}
+  userPrompt: string,
+  systemPrompt?: string,
 ): Promise<string> {
-  return call(prompt, opts);
+  return call({
+    preset: PPLX_PRESETS.search,
+    userPrompt,
+    systemPrompt,
+  });
 }
 
 /**
- * Run a deep-research agent call using the deep-research preset.
- * Suitable for multi-step, multi-source research tasks.
- *
- * @example
- * const report = await perplexity.deepResearch(
- *   "Analyze Q1 2026 Gulf Coast refinery utilisation trends"
- * );
+ * Run a deep-research agent call (multi-step, 10 reasoning steps).
  */
 export async function deepResearch(
-  prompt: string,
-  opts: Omit<CallOptions, "preset"> = {}
+  userPrompt: string,
+  systemPrompt?: string,
 ): Promise<string> {
-  return call(prompt, { ...opts, preset: "deep", noCache: true });
+  return call({
+    preset: PPLX_PRESETS.deepResearch,
+    userPrompt,
+    systemPrompt,
+    noCache: true, // deep research is always fresh
+  });
 }
-
-/**
- * Estimate cost (USD) for a call without making it.
- * Based on Perplexity April 2026 pricing.
- */
-export function estimateCost(preset: PresetKey, promptTokens = 500): number {
-  // Approximate USD per 1k tokens (input + output blended) per preset
-  const rates: Record<PresetKey, number> = {
-    fast: 0.0002,
-    balanced: 0.0005,
-    deep: 0.003,
-  };
-  return (rates[preset] * promptTokens) / 1000;
-}
-
-// Default export for convenience: { structured, text, deepResearch, estimateCost, PRESETS, resolvePreset }
-const perplexity = { structured, text, deepResearch, estimateCost, PRESETS, resolvePreset };
-export default perplexity;
