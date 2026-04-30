@@ -1,56 +1,76 @@
-# Gulf Coast Industrial Radar
+# Gulf Coast Industrial Radar (GCIR)
 
-> Real-time intelligence platform for Gulf Coast industrial project activity.
+A full-stack monorepo for tracking, validating, and analysing Gulf Coast industrial
+facilities, assemblies, and regulatory data.
 
-## Architecture
+## Stack
 
-```
-gulf-coast-industrial-radar/
-├── apps/
-│   ├── web/          # Next.js 15 dashboard
-│   └── worker/       # Cron job scheduler (node-cron)
-├── packages/
-│   ├── adapters/     # Data source scrapers (14 sources)
-│   ├── agents/       # AI agent clients (OpenAI, Perplexity)
-│   ├── db/           # Prisma schema + migrations
-│   └── scoring/      # Signal scoring + QLAD detector
-└── packages/adapters/src/research/  # Source schema artifacts
-```
+- **Framework**: Next.js 14 (App Router)
+- **Database**: PostgreSQL via Prisma
+- **AI / Research**: OpenAI (GPT-4o-mini) + Perplexity Agent API
+- **Monorepo**: pnpm workspaces + Turborepo
+- **Testing**: Vitest
 
-## Phases
-
-| Phase | Description | Status |
-|---|---|---|
-| 1 | Core adapters + DB schema | ✓ Done |
-| 2 | QLAD detector + scoring | ✓ Done |
-| 3 | Perplexity validation + live alerting | ✓ Done |
-
-## Phase 3 Highlights
-
-- **Perplexity Agent API** (`packages/agents/src/perplexity-client.ts`): structured, text, and deepResearch helpers with 7-day DB cache and daily budget cap.
-- **AssemblyValidator** (`packages/agents/src/assembly-validator.ts`): 2-step Perplexity pass for QLAD alerts — public coverage check + entity research.
-- **QLAD live worker** (`apps/worker/src/jobs/qlad-evaluate.ts`): clusters LAND_CONTROL signals every 20 minutes, fires alerts.
-- **14 source research artifacts** (`packages/adapters/src/research/`): documents the current API/HTML schema of every Gulf Coast source.
-- **UI surfacing**: SummaryTab and EvidenceTab now show `publicCoverageFound` banner and supplementary evidence.
-
-## Setup
+## Getting started
 
 ```bash
-cp .env.example .env
-# Fill in DATABASE_URL, OPENAI_API_KEY, PERPLEXITY_API_KEY
+# 1. Install dependencies
 pnpm install
-pnpm db:migrate
+
+# 2. Copy env template
+cp .env.example .env
+# Fill in DATABASE_URL, OPENAI_API_KEY, PERPLEXITY_API_KEY at minimum.
+
+# 3. Push the DB schema
+pnpm db:push
+
+# 4. Run the dev server
 pnpm dev
 ```
 
-## Research Sources
+## Perplexity preset routing
 
-To regenerate source schema research artifacts:
+GCIR routes Perplexity calls through named **presets** rather than raw model IDs.
+Each preset bundles a model, tool config, and step budget:
+
+| Preset key | API preset string | Approx cost | When used |
+|------------|-------------------|-------------|------------------------------|
+| `fast` | `fast-research` | ~$0.002/call | Simple, known-schema lookups |
+| `balanced` | `pro-search` | ~$0.005/call | Default — most calls |
+| `deep` | `deep-research` | ~$0.015/call | Multi-step research tasks |
+
+### How to enable
+
+1. Set `PERPLEXITY_API_KEY` in `.env`.
+2. Optionally override the default preset: `PERPLEXITY_DEFAULT_PRESET=fast-research`.
+3. Optionally set a daily spend cap: `PERPLEXITY_DAILY_BUDGET_USD=5.00`.
+
+See [`packages/agents/src/perplexity-client.ts`](packages/agents/src/perplexity-client.ts)
+for the full implementation including caching, telemetry, and cost estimation.
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| `apps/web` | Next.js web application |
+| `packages/agents` | AI agent clients (OpenAI, Perplexity) + pipelines |
+| `packages/db` | Prisma schema + client |
+| `packages/ui` | Shared React components |
+
+## Testing
 
 ```bash
-pnpm research-sources
-# or for specific sources:
-npx ts-node packages/agents/scripts/research-sources.ts --sources led-fastlane,la-sos
+# Run all tests
+pnpm test
+
+# Run agent tests only
+pnpm --filter @gcir/agents test
 ```
 
-See [`packages/adapters/src/research/`](packages/adapters/src/research/) for current artifacts.
+## Environment variables
+
+See [`.env.example`](.env.example) for the full list with descriptions.
+
+## Licence
+
+MIT

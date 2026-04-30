@@ -1,36 +1,44 @@
-#!/usr/bin/env ts-node
+#!/usr/bin/env tsx
 /**
- * CLI entrypoint for the source-schema-researcher utility.
+ * CLI script: research a list of Gulf Coast industrial data sources
+ * and print their inferred JSON schemas.
  *
  * Usage:
- *   npx ts-node packages/agents/scripts/research-sources.ts
- *   npx ts-node packages/agents/scripts/research-sources.ts --sources led-fastlane,la-sos
- *   npx ts-node packages/agents/scripts/research-sources.ts --output /tmp/research
+ *   pnpm tsx packages/agents/scripts/research-sources.ts [--preset fast|balanced|deep]
+ *
+ * Calls the Perplexity Agent API via SourceSchemaResearcher.
+ * Default preset: balanced (pro-search, ~$0.005/source).
  */
 
-import path from "node:path";
-import { researchAll } from "../src/source-schema-researcher";
+import { SourceSchemaResearcher } from "../src/source-schema-researcher";
+import type { PresetKey } from "../src/perplexity-client";
 
-const args = process.argv.slice(2);
+const SOURCES = [
+  { name: "EPA TRI Form R", url: "https://www.epa.gov/toxics-release-inventory-tri-program" },
+  { name: "TCEQ Air Quality Permits", url: "https://www.tceq.texas.gov/airquality/permits" },
+  { name: "BOEM Gulf of Mexico Lease Sales", url: "https://www.boem.gov/oil-gas-energy/leasing" },
+  { name: "EIA-914 Natural Gas Production Report" },
+  { name: "PHMSA Hazmat Incident Reports" },
+];
 
-function getArg(flag: string): string | undefined {
-  const idx = args.indexOf(flag);
-  return idx !== -1 ? args[idx + 1] : undefined;
+async function main() {
+  const presetArg = process.argv.find((a) => a.startsWith("--preset="));
+  const preset = (presetArg?.split("=")[1] ?? "balanced") as PresetKey;
+
+  console.log(`\nResearching ${SOURCES.length} sources with preset: ${preset}\n`);
+
+  const researcher = new SourceSchemaResearcher({ preset });
+  const schemas = await researcher.inferSchemas(SOURCES);
+
+  for (const s of schemas) {
+    console.log(`\n--- ${s.title} (confidence: ${s.confidence}) ---`);
+    console.log(JSON.stringify(s.schema, null, 2));
+    if (s.notes) console.log(`Notes: ${s.notes}`);
+    if (s.sources.length) console.log(`Sources: ${s.sources.join(", ")}`);
+  }
 }
 
-const rawSlugs = getArg("--sources");
-const slugs = rawSlugs ? rawSlugs.split(",").map((s) => s.trim()) : undefined;
-
-const outputDir =
-  getArg("--output") ??
-  path.resolve(__dirname, "../../../packages/adapters/src/research");
-
-researchAll(outputDir, slugs)
-  .then(() => {
-    console.log("Done.");
-    process.exit(0);
-  })
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
