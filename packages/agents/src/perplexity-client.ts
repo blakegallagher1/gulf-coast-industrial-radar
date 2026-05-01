@@ -42,9 +42,9 @@ const client = new Perplexity({
  *
  * Source: https://docs.perplexity.ai/docs/agent-api/presets (April 2026)
  *
- *   fast-search              → xai/grok-4-1-fast-non-reasoning · 1 step  · web_search
- *   pro-search               → openai/gpt-5.1                  · 3 steps · web_search + fetch_url
- *   deep-research            → openai/gpt-5.2                  · 10 steps · web_search + fetch_url
+ *   fast-search             → xai/grok-4-1-fast-non-reasoning · 1 step  · web_search
+ *   pro-search              → openai/gpt-5.1                  · 3 steps · web_search + fetch_url
+ *   deep-research           → openai/gpt-5.2                  · 10 steps · web_search + fetch_url
  *   advanced-deep-research  → anthropic/claude-opus-4-6       · 10 steps · web_search + fetch_url
  */
 export const PPLX_PRESETS = {

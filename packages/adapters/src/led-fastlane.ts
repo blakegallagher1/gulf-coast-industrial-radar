@@ -124,7 +124,7 @@ function parseImsListings(html: string): ImsRow[] {
     );
     if (cols.length < 4) continue;
     out.push({
-"      id: cols[0] || undefined,
+      id: cols[0] || undefined,
       companyOrRedacted: (cols[1] || "REDACTED").toUpperCase().includes("REDAC")
         ? "REDACTED"
         : cols[1] ?? "REDACTED",
@@ -160,7 +160,7 @@ function normalizeStatus(s: string): ImsRow["status"] {
 }
 
 function stripTags(s: string): string {
-  return s.replace(/<[^>]+>/g, "").replace(/&nbsp;/k, " ").replace(/&amp;/g, "&");
+  return s.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&");
 }
 
 function safeDate(s: string): Date | undefined {

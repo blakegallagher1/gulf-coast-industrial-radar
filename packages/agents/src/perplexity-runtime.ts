@@ -45,7 +45,7 @@ export async function withRetry<T>(fn: () => Promise<T>, label: string): Promise
   throw lastErr;
 }
 
-// ─── per-agent budgets ────────────────────────────────────────────────────
+// ─── per-agent budgets ─────────────────────────────────────────────────────
 
 /**
  * Per-agent soft budget caps (USD/day). Exceeding the cap WARNS but does not
