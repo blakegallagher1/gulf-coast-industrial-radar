@@ -5,6 +5,12 @@
  * agent name is namespaced "Perplexity.<name>" or "OpenAI.<name>" so the
  * backend is implicit. Soft-grouped by UTC day for scannability.
  *
+ * Pull-channel for budget alerts: a red banner appears at the top of the page
+ * when today's UTC-day total spend has crossed BUDGET_ALERT_THRESHOLD (default
+ * 0.75 = 75% of PERPLEXITY_DAILY_BUDGET_USD). This is the same threshold the
+ * budget-report cron uses for email pushes — email requires RESEND_API_KEY +
+ * BUDGET_ALERT_TO_EMAIL to be set, but this banner is unconditional.
+ *
  * Read-only: no mutations from this page. Cron + agent code do all writes.
  */
 
@@ -34,6 +40,9 @@ const STATUS_BADGE: Record<string, string> = {
   error: "bg-danger/[0.06] text-danger ring-danger/30",
 };
 
+const DAILY_CAP = Number(process.env.PERPLEXITY_DAILY_BUDGET_USD ?? "50");
+const ALERT_THRESHOLD = Number(process.env.BUDGET_ALERT_THRESHOLD ?? "0.75");
+
 function splitAgent(full: string): { backend: "perplexity" | "openai" | "unknown"; name: string } {
   if (full.startsWith("Perplexity.")) return { backend: "perplexity", name: full.slice(11) };
   if (full.startsWith("OpenAI.")) return { backend: "openai", name: full.slice(7) };
@@ -42,8 +51,10 @@ function splitAgent(full: string): { backend: "perplexity" | "openai" | "unknown
 
 export default async function AdminRunsPage() {
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const sinceUtcDay = new Date();
+  sinceUtcDay.setUTCHours(0, 0, 0, 0);
 
-  const [runs, todayAgg, errorAgg] = await Promise.all([
+  const [runs, todayAgg, errorAgg, utcDayAgg] = await Promise.all([
     prisma.agentRun.findMany({
       orderBy: { startedAt: "desc" },
       take: 100,
@@ -65,12 +76,21 @@ export default async function AdminRunsPage() {
     prisma.agentRun.count({
       where: { startedAt: { gte: since24h }, status: "error" },
     }),
+    prisma.agentRun.aggregate({
+      where: { startedAt: { gte: sinceUtcDay } },
+      _sum: { costUsd: true },
+    }),
   ]);
 
   const todayTotal = todayAgg._sum.costUsd ?? 0;
   const todayRuns = todayAgg._count._all;
   const todayErrors = errorAgg;
   const errorRate = todayRuns > 0 ? todayErrors / todayRuns : 0;
+
+  // ── Banner: same UTC-day window the budget-report cron uses for email pushes
+  const utcDayTotal = utcDayAgg._sum.costUsd ?? 0;
+  const pctOfCap = DAILY_CAP > 0 ? utcDayTotal / DAILY_CAP : 0;
+  const overAlertThreshold = pctOfCap >= ALERT_THRESHOLD;
 
   return (
     <main className="mx-auto max-w-[1280px] flex-1 overflow-y-auto px-10 py-9">
@@ -84,6 +104,31 @@ export default async function AdminRunsPage() {
         Every Perplexity call and every OpenAI fallback writes a row here. Backend, model, cost,
         and latency are recorded from the agent runtime — there&rsquo;s no other source of truth.
       </p>
+
+      {/* ── Budget alert (UTC-day spend ≥ 75% of cap) ─────────────────────── */}
+      {overAlertThreshold && (
+        <div className="mb-5 rounded-md border border-danger/30 bg-danger/[0.06] p-4 text-danger">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.08em]">
+                Daily budget alert
+              </div>
+              <div className="mt-1 text-[20px] font-semibold tracking-tight">
+                {fmtUSD(utcDayTotal)} / {fmtUSD(DAILY_CAP)}
+                <span className="ml-2 text-[15px] font-normal opacity-70">
+                  ({(pctOfCap * 100).toFixed(0)}% of cap, UTC day)
+                </span>
+              </div>
+            </div>
+            <div className="max-w-[420px] text-[12px] leading-relaxed opacity-80">
+              Threshold via <code className="font-mono">BUDGET_ALERT_THRESHOLD</code>
+              {" "}({(ALERT_THRESHOLD * 100).toFixed(0)}%). Hard cap via{" "}
+              <code className="font-mono">PERPLEXITY_DAILY_BUDGET_USD</code>. Per-agent rollback
+              via <code className="font-mono">AGENT_BACKEND_&lt;NAME&gt;=openai</code>.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 24h scoreboard ─────────────────────────────────────────────────── */}
       <div className="mb-7 grid grid-cols-3 gap-3">
@@ -147,10 +192,10 @@ export default async function AdminRunsPage() {
                   </span>
                 </td>
                 <td className="border-b border-line-2 px-2.5 py-2.5 align-top text-right font-mono text-[11.5px] text-ink-2">
-                  {r.costUsd != null ? `$${r.costUsd.toFixed(4)}` : —"}
+                  {r.costUsd != null ? `$${r.costUsd.toFixed(4)}` : "—"}
                 </td>
                 <td className="border-b border-line-2 px-2.5 py-2.5 align-top text-right font-mono text-[11.5px] text-muted-2">
-                  {r.latencyMs != null ? `${r.latencyMs.toLocaleString()} ms` : —"}
+                  {r.latencyMs != null ? `${r.latencyMs.toLocaleString()} ms` : "—"}
                 </td>
               </tr>
             );
