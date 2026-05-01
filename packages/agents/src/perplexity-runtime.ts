@@ -8,7 +8,7 @@
 
 import { prisma } from "@gcir/db";
 
-// ─── retry ─────────────────────────────────────────────────────────────────────────
+// ─── retry ─────────────────────────────────────────────────────────────────
 
 export const MAX_RETRIES = Number(process.env.PERPLEXITY_MAX_RETRIES ?? "3");
 export const RETRY_BASE_MS = 1000;
@@ -45,7 +45,7 @@ export async function withRetry<T>(fn: () => Promise<T>, label: string): Promise
   throw lastErr;
 }
 
-// ─── per-agent budgets ─────────────────────────────────────────────────────────────
+// ─── per-agent budgets ────────────────────────────────────────────────────
 
 /**
  * Per-agent soft budget caps (USD/day). Exceeding the cap WARNS but does not
@@ -81,7 +81,7 @@ export async function checkAgentBudget(agent: string): Promise<void> {
   }
 }
 
-// ─── citation extraction ──────────────────────────────────────────────────────────────
+// ─── citation extraction ───────────────────────────────────────────────────
 
 export type Citation = {
   url: string;
@@ -114,7 +114,7 @@ export function extractCitations(resp: AgentResponseShape): Citation[] {
   return cites;
 }
 
-// ─── cost estimation ──────────────────────────────────────────────────────────────
+// ─── cost estimation ───────────────────────────────────────────────────────
 
 export type Usage = {
   input_tokens?: number;
