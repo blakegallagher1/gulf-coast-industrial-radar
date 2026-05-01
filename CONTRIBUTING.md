@@ -1,58 +1,48 @@
-# Contributing to Gulf Coast Industrial Radar
+# Contributing
 
-Thank you for contributing! Please read this before opening PRs.
-
-## Prerequisites
-
-- Node.js 20+
-- pnpm 9+
-- Docker (for local Postgres + PostGIS)
-
-## Getting started
+## Local setup
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/blakegallagher1/gulf-coast-industrial-radar.git
-cd gulf-coast-industrial-radar
 pnpm install
-
-# 2. Copy env
-cp .env.example .env.local
-# Edit .env.local with your secrets
-
-# 3. Start database
 docker compose up -d
-
-# 4. Push schema & seed
-pnpm db:push
-pnpm db:seed
-
-# 5. Start dev
+cp .env.example .env.local
+pnpm db:generate && pnpm db:push && pnpm db:seed
 pnpm dev
 ```
 
-## Code style
+## Adding a new source adapter
 
-- Run `pnpm lint` and `pnpm typecheck` before committing.
-- Prettier is enforced via pre-commit (husky + lint-staged).
+1. Add a row to `seed.ts` so the `Source` exists in the registry.
+2. Implement `packages/adapters/src/<slug>.ts` exporting a `SourceAdapter`.
+3. Wire it in `packages/adapters/src/index.ts`.
+4. Use `fetchWithRetry` for every outbound HTTP call.
+5. Return `AdapterRecord` with `family`, `predicate`, `confidence`, `payload`.
+6. Persist evidence via `storeEvidence` — never skip the raw archive.
 
-## Commit messages
+## Adding a new signal predicate
 
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
-- `feat:` new feature
-- `fix:` bug fix
-- `chore:` build/config changes
-- `docs:` documentation only
+1. Document the predicate in `packages/agents/src/document-extraction.ts` so
+   the extraction agent knows the canonical name.
+2. If the predicate maps to a new entity / parcel / project field, update
+   `packages/db/prisma/schema.prisma` and write a migration.
+3. Update the scoring weights in `packages/shared/src/taxonomy.ts` if a new
+   family is introduced (rare — most predicates fold into existing families).
 
-## Branch strategy
+## Adding a new tab to the alert drawer
 
-- `main` — production-ready code only
-- `feat/<name>` — feature branches
-- `fix/<name>` — bug fixes
+1. Create the component under `apps/web/components/radar/tabs/`.
+2. Register it in `apps/web/components/radar/Drawer.tsx`.
+3. Add the API route under `apps/web/app/api/projects/[id]/<tab>/route.ts`
+   if it needs server-rendered data.
 
-## Pull requests
+## Running the worker
 
-1. Fork the repo or create a branch from `main`.
-2. Make your changes.
-3. Open a PR against `main`.
-4. At least one approval required before merging.
+`WORKER_CRON_ENABLED=false` (default) does a single one-shot pass and exits —
+useful for local debugging. `WORKER_CRON_ENABLED=true` activates the schedulers
+in `apps/worker/src/index.ts`.
+
+## Style
+
+- 2-space indent · `printWidth=100` · `trailingComma=all` · `semi=true`.
+- TypeScript strict; no `any`, no `// @ts-ignore`.
+- Prefer absolute imports `@/components/...`, `@gcir/db`, etc. over deep relatives.

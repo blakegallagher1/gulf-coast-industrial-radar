@@ -1,52 +1,51 @@
-# Gulf Coast Industrial Radar — Agent Guide
+# Agent Instructions — Gulf Coast Industrial Radar
 
-This file tells AI coding assistants (Claude Code, Cursor, Copilot, etc.) how to work effectively in this monorepo.
+This is now a runnable Next.js + Prisma monorepo. The original markdown-first
+knowledge base (`knowledge/`) remains the source of truth for product decisions;
+the code under `apps/` and `packages/` implements that spec.
 
-## Repo layout
+## Read order for any new agent / contributor
 
-```
-gcir/
-  apps/
-    web/          Next.js 15 app (Clerk auth, MapLibre, shadcn/ui)
-    worker/       Long-running Node process (croner scheduler)
-  packages/
-    adapters/     Source adapters (fetch → typed signals)
-    agents/       OpenAI-powered AI agents
-    db/           Prisma 6 client + PostGIS schema + seed
-    scoring/      Pure-function scoring engines
-    shared/       Shared types, constants, taxonomy
-```
+1. `README.md`
+2. `knowledge/INDEX.md`
+3. `knowledge/strategy/product-thesis.md`
+4. `knowledge/product/research-prd.md`
+5. `knowledge/product/quiet-land-assembly-detector.md`
+6. `knowledge/sources/signal-taxonomy.md`
+7. `knowledge/implementation/data-model.md`
+8. `knowledge/implementation/agent-architecture.md`
+9. `packages/db/prisma/schema.prisma`
+10. The specific module relevant to the task
 
-## Key conventions
+## Project constraints
 
-- **pnpm workspaces** — run `pnpm -F <package> <cmd>` from the repo root.
-- **TypeScript strict** — all packages use `@gcir/tsconfig/base`.
-- **Prisma 6** — schema lives in `packages/db/prisma/schema.prisma`; always run `pnpm db:push` after changes.
-- **Scoring engines** are pure functions: `(input) => score`. No DB or network calls.
-- **Adapters** implement `BaseAdapter` and export a default instance.
-- **Agents** are thin wrappers around OpenAI structured outputs.
-- **No secrets** in source. Use `.env.local` (gitignored).
+- First-pass buyer: real estate investors and developers.
+- First-pass data: free / public sources only. No paid aggregators, GovWin /
+  GovTribe subscriptions, paid satellite, or proprietary bid-alert databases.
+- Do not treat contractor / vendor BD as the wedge unless explicitly redirected.
+- Preserve source provenance. Every fact links to its `RawDocument` with URL,
+  observed date, confidence label, and content hash.
+- Prefer concise markdown files in `knowledge/` over one giant document.
 
-## Common tasks
+## Code conventions
 
-| Task | Command |
-|------|---------|
-| Dev (web) | `pnpm dev` |
-| DB migrate | `pnpm db:push` |
-| DB seed | `pnpm db:seed` |
-| Type-check all | `pnpm typecheck` |
-| Lint | `pnpm lint` |
-| Build | `pnpm build` |
+- TypeScript strict mode, `noUncheckedIndexedAccess: true`.
+- Every adapter goes through `fetchWithRetry` (`packages/adapters/src/utils/`).
+  No bare `fetch()` against external sources — single transient failures must
+  not abort entire ingestion runs (lesson from gpc-cres April '26 audit).
+- Every claim-bearing object preserves `sourceId`, `rawDocumentId`,
+  `observedAt`, `documentDate`, `confidence`. The DocumentExtraction agent
+  always returns a verbatim `evidenceSpan`.
+- High-impact conclusions (likely sponsor identity, acquisition strategy,
+  legal / environmental / entitlement risk) require `AnalystReview` before
+  external distribution.
+- New signal predicates go in the `predicate` field as
+  `family.subject.qualifier` (e.g., `permit.air.NOI`, `incentive.itep.eligible`)
+  and are documented in `packages/agents/src/document-extraction.ts`.
 
-## Adding a new source adapter
+## Markdown standards (knowledge/)
 
-1. Create `packages/adapters/src/<name>.adapter.ts`.
-2. Extend `BaseAdapter` and implement `fetch()`.
-3. Export from `packages/adapters/src/index.ts`.
-4. Add to `packages/agents/src/source-watcher.agent.ts` dispatching.
-
-## Adding a new AI agent
-
-1. Create `packages/agents/src/<name>.agent.ts`.
-2. Use `openai.beta.chat.completions.parse` with a Zod schema.
-3. Export from `packages/agents/src/index.ts`.
+- Semantic headings, short sections, tables where comparison helps.
+- YAML frontmatter for durable metadata.
+- Relative links inside project markdown.
+- Keep files focused on one concept, workflow, source family, or decision area.

@@ -1,25 +1,32 @@
 {
   "name": "gulf-coast-industrial-radar",
-  "version": "0.3.0",
+  "version": "0.1.0",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "description": "Detect Gulf Coast industrial project formation before the market prices it in.",
+  "packageManager": "pnpm@9.12.3",
+  "engines": {
+    "node": ">=20.10",
+    "pnpm": ">=9"
+  },
   "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev --parallel",
-    "lint": "turbo run lint",
-    "test": "turbo run test",
-    "db:migrate": "turbo run db:migrate",
-    "research-sources": "npx ts-node packages/agents/scripts/research-sources.ts"
+    "dev": "pnpm -r --parallel run dev",
+    "dev:web": "pnpm --filter @gcir/web dev",
+    "dev:worker": "pnpm --filter @gcir/worker dev",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "db:generate": "pnpm --filter @gcir/db prisma:generate",
+    "db:migrate": "pnpm --filter @gcir/db prisma:migrate",
+    "db:push": "pnpm --filter @gcir/db prisma:push",
+    "db:seed": "pnpm --filter @gcir/db seed",
+    "db:reset": "pnpm --filter @gcir/db prisma:reset",
+    "studio": "pnpm --filter @gcir/db studio",
+    "format": "prettier --write .",
+    "research:sources": "pnpm --filter @gcir/agents research:all"
   },
   "devDependencies": {
-    "turbo": "^2.3.3",
-    "typescript": "^5.7.3"
-  },
-  "packageManager": "pnpm@9.15.4",
-  "engines": {
-    "node": ">=20"
+    "@types/node": "^22.7.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
   }
 }

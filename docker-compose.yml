@@ -1,8 +1,8 @@
-version: "3.9"
-
+# Local dev stack: Postgres + PostGIS, Qdrant (optional for embeddings), Mailhog
 services:
   postgres:
-    image: postgis/postgis:16-3.4-alpine
+    image: postgis/postgis:16-3.4
+    container_name: gcir-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -11,7 +11,19 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - gcir-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gcir"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: gcir-mailhog
+    ports:
+      - "1025:1025" # smtp
+      - "8025:8025" # web ui
 
 volumes:
-  pgdata:
+  gcir-pg:
