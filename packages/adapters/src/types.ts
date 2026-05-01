@@ -1,57 +1,60 @@
 /**
  * Adapter contract — every source adapter implements this interface.
+ * The worker iterates all registered adapters on a schedule and calls run().
  */
 
-export interface AdapterContext {
-  /** ISO timestamp of the previous successful fetch, if any */
-  since?: Date;
-  /** Opaque pagination cursor from the previous run */
+import type { SignalFamily } from "@gcir/shared";
+
+export type AdapterContext = {
+  /** Source row id from the DB. */
+  sourceId: string;
+  /** SourceRun id created by the worker before calling run(). */
+  sourceRunId: string;
+  /** Optional resume cursor from the previous run. */
   cursor?: unknown;
-  /** Abort signal for graceful shutdown */
-  signal?: AbortSignal;
-}
+  /** Window: only fetch records observed since this date (when supported). */
+  since?: Date;
+};
 
-export interface AdapterRecord {
-  /** Stable external identifier (dedup key) */
+export type AdapterRecord = {
+  /** Stable id used for deduplication (URL, doc id, parcel id, ...). */
   externalId: string;
-  /** Signal family (maps to SignalType in the DB schema) */
-  family: string;
-  /** Predicate — dot-separated verb phrase: "permit.air.NOI" */
+  /** Signal family this record will become. */
+  family: SignalFamily;
+  /** Predicate vocabulary, e.g. "land.transfer", "permit.air.NOI". */
   predicate: string;
-  /** Human-readable label for the subject of this signal */
+  /** Human label for the UI. */
   subjectLabel: string;
-  /** When the underlying document was created / filed */
+  /** When the underlying event happened (filing date, sale date, etc.). */
   documentDate?: Date;
-  /** When this record was observed by our crawler */
+  /** When we observed it (run timestamp). */
   observedAt: Date;
-  /** Confidence score [0, 1] */
+  /** 0..1 extraction confidence. */
   confidence: number;
-  /** Canonical source URL */
+  /** Original URL of the source record. */
   url: string;
-  /** Raw bytes (stringified JSON, HTML, PDF text, etc.) */
-  rawBytes: string;
-  /** MIME type of rawBytes */
+  /** Raw bytes (HTML/PDF/JSON) for evidence archival. */
+  rawBytes: Buffer | Uint8Array | string;
+  /** Mime type of rawBytes. */
   rawMime: string;
-  /** Extracted text snippet for quick review */
+  /** Verbatim excerpt for the evidence drawer. */
   evidenceSnippet?: string;
-  /** Typed payload — adapter-specific structured data */
+  /** Structured fields extracted from the record. */
   payload: Record<string, unknown>;
-}
+};
 
-export interface AdapterResult {
+export type AdapterResult = {
   records: AdapterRecord[];
-  /** Next cursor to pass in the following run, or null if no more pages */
-  nextCursor: unknown;
-  /** Free-text notes for logging */
+  /** Next-page cursor; null/undefined ends the run. */
+  nextCursor?: unknown;
+  /** Optional per-run telemetry. */
   notes?: string;
-}
+};
 
 export interface SourceAdapter {
-  /** Unique slug (matches DataSource.slug in the DB) */
   slug: string;
-  /** Signal family produced by this adapter */
-  family: string;
-  /** Whether this adapter has real fetch logic */
+  family: SignalFamily;
+  /** True if this adapter has a working real implementation; false = stub. */
   implemented: boolean;
   run(ctx: AdapterContext): Promise<AdapterResult>;
 }

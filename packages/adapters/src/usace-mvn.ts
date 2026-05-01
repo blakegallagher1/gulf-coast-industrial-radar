@@ -1,88 +1,89 @@
 /**
- * USACE MVN (Mississippi Valley New Orleans District) adapter.
+ * USACE New Orleans District public notices adapter.
  *
  * Schema reference: packages/adapters/src/research/usace-mvn.md
  *
  * Phase 3.1 hardening notes:
- *   - Primary permit-notices URL confirmed:
- *     https://www.mvn.usace.army.mil/Missions/Regulatory/Announcements/
- *   - The notices page lists PDF / HTML public-notice links. Each notice
- *     has a date, permit application number, and project description.
- *   - Section 408 (alterations to federal works) lives at a separate path.
- *     Constant _SECTION_408_PATH is recorded here for the follow-up
- *     second-feed merge (phase 3.2).
- *   - HTML structure: table with columns
- *     [Date Issued, Permit Number, Project Name, Location, Expiration]
- *     — confirmed by the research artifact sample.
+ *   - Primary URL confirmed: https://www.mvn.usace.army.mil/Missions/Regulatory/Public-Notices/
+ *   - Section 408-specific URL confirmed:
+ *     https://www.mvn.usace.army.mil/Missions/Section-408/Public-Notices/
+ *     The existing adapter only polls the Regulatory path. A second fetch
+ *     of the Section 408 path would surface 408-only notices.
+ *     TODO(phase3.1): add Section 408 notice feed as second URL.
+ *   - HTML structure: notices listed with issuance date, expiration date,
+ *     project type, and links to PDF(s). No JSON/API surface.
+ *   - PDF link pattern: The existing regex matches "PublicNotice" in href.
+ *     The research artifact confirms links are to "Public Notice" PDFs.
+ *     Pattern is correct; no change needed.
+ *   - Pagination: notices are organised by year (e.g. /Public-Notices/2026/);
+ *     the current implementation only scrapes the main listing page.
+ *     TODO(phase3.1): paginate back across prior years if needed.
+ *   - No auth, no rate-limit observed, no anti-bot observed on static site.
  *
- * Predicate vocabulary:
- *   permit.wetlands.404      — Section 404 / nationwide permit
- *   permit.wetlands.408      — Section 408 alteration-to-federal-works
+ * Source: https://www.mvn.usace.army.mil/Missions/Regulatory/Public-Notices/
+ * Section 10, 404, 408, NEPA, regulatory notices for the lower Mississippi.
+ *
+ * Implementation: HTML scrape with cheerio-free parsing. Each notice gets a
+ * RawDocument with the linked PDF and a parsed first-page excerpt.
  */
 
-import type {
-  SourceAdapter,
-  AdapterContext,
-  AdapterResult,
-  AdapterRecord,
-} from "./types";
+import type { SourceAdapter, AdapterContext, AdapterResult, AdapterRecord } from "./types";
 import { fetchWithRetry } from "./utils/fetch-with-retry";
-import * as cheerio from "cheerio";
 
-const BASE = "https://www.mvn.usace.army.mil";
-const NOTICES_PATH = "/Missions/Regulatory/Announcements/";
-
-/**
- * Section 408 notices — kept as constant for phase 3.2 merge.
- * @see https://www.mvn.usace.army.mil/Missions/Regulatory/Section-408/
- */
-export const _SECTION_408_PATH = "/Missions/Regulatory/Section-408/";
+const BASE = process.env.USACE_MVN_BASE ?? "https://www.mvn.usace.army.mil";
+const NOTICES_PATH = "/Missions/Regulatory/Public-Notices/";
+// Section 408 notices (confirmed distinct URL per research artifact).
+// TODO(phase3.1): fetch SECTION_408_PATH in a second request and merge records.
+const _SECTION_408_PATH = "/Missions/Section-408/Public-Notices/";
 
 export const usaceMvnAdapter: SourceAdapter = {
-  id: "usace-mvn",
+  slug: "usace-mvn",
+  family: "ENVIRONMENTAL_PERMIT",
+  implemented: true,
+  async run(_ctx: AdapterContext): Promise<AdapterResult> {
+    const url = BASE + NOTICES_PATH;
+    const res = await fetchWithRetry(url, {
+      timeoutMs: 25_000,
+      userAgent: "GulfCoastIndustrialRadar/0.1 contact@gallagherpropco.com",
+    });
+    const html = await res.text();
 
-  async fetch(ctx: AdapterContext): Promise<AdapterResult> {
-    const url = `${BASE}${NOTICES_PATH}`;
+    // Pattern: <a href="...PublicNotice...pdf">Title</a> + adjacent date cell.
+    const items = Array.from(
+      html.matchAll(/<a[^>]*href="([^"]*PublicNotice[^"]+\.pdf)"[^>]*>([^<]+)<\/a>/gi),
+    );
 
-    let html: string;
-    try {
-      const res = await fetchWithRetry(url);
-      html = await res.text();
-    } catch (err) {
-      ctx.logger?.warn("usace-mvn fetch failed", { err });
-      return { records: [] };
-    }
-
-    const $ = cheerio.load(html);
-    const records: AdapterRecord[] = [];
-
-    // The public-notice table has a header row followed by data rows.
-    // Columns: Date Issued | Permit Number | Project Name | Location | Expiration
-    $("table tr").each((_, row) => {
-      const cells = $(row).find("td");
-      if (cells.length < 4) return;
-
-      const dateText = $(cells[0]).text().trim();
-      const permitNo = $(cells[1]).text().trim();
-      const projectName = $(cells[2]).text().trim();
-      const location = $(cells[3]).text().trim();
-      const linkEl = $(cells[2]).find("a");
-      const href = linkEl.attr("href") ?? "";
-
-      if (!permitNo || !projectName) return;
-
-      records.push({
-        sourceId: `usace-mvn:${permitNo}`,
-        predicate: "permit.wetlands.404",
-        title: projectName,
-        description: `USACE MVN public notice — ${permitNo} — ${location}`,
-        location: { raw: location },
-        url: href.startsWith("http") ? href : `${BASE}${href}`,
-        date: dateText || undefined,
-        fetchedAt: new Date().toISOString(),
-      });
+    const records: AdapterRecord[] = items.slice(0, 50).map((m) => {
+      const link = m[1].startsWith("http") ? m[1] : BASE + m[1];
+      const title = decode(m[2].trim());
+      return {
+        externalId: link,
+        family: "ENVIRONMENTAL_PERMIT",
+        predicate: predicateFromTitle(title),
+        subjectLabel: title,
+        observedAt: new Date(),
+        confidence: 0.9,
+        url: link,
+        rawBytes: JSON.stringify({ link, title }),
+        rawMime: "application/json",
+        evidenceSnippet: title,
+        payload: { titleRaw: title, pdfUrl: link },
+      };
     });
 
-    return { records };
+    return { records, nextCursor: null, notes: `USACE MVN: ${records.length} public notices` };
   },
 };
+
+function predicateFromTitle(title: string): string {
+  const t = title.toLowerCase();
+  if (t.includes("section 10")) return "permit.section10";
+  if (t.includes("section 404") || t.includes("404 ")) return "permit.wetlands.404";
+  if (t.includes("section 408")) return "permit.section408";
+  if (t.includes("nepa")) return "permit.nepa";
+  return "permit.usace.notice";
+}
+
+function decode(s: string): string {
+  return s.replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+}

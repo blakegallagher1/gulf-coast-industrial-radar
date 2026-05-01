@@ -69,39 +69,57 @@ export async function fetchWithRetry(
       });
       clearTimeout(timer);
 
-      if (noRetryStatus.includes(res.status)) throw new FetchError(`HTTP ${res.status}`, url, attempt, res.status);
-      if (!res.ok) {
-        lastError = new FetchError(`HTTP ${res.status}`, url, attempt, res.status);
-        await sleep(jitter(backoffMs * 2 ** (attempt - 1)));
-        continue;
+      // 2xx success
+      if (res.ok) return res;
+
+      // Permanent failure — don't retry
+      if (noRetryStatus.includes(res.status)) {
+        throw new FetchError(
+          `non-retryable HTTP ${res.status} from ${url}`,
+          url,
+          attempt,
+          res.status,
+        );
       }
-      return res;
+
+      // 5xx / 429 — retry with backoff
+      if (attempt >= retries) {
+        throw new FetchError(
+          `HTTP ${res.status} from ${url} after ${attempt} attempts`,
+          url,
+          attempt,
+          res.status,
+        );
+      }
+      lastError = new FetchError(`HTTP ${res.status}`, url, attempt, res.status);
     } catch (err) {
       clearTimeout(timer);
-      if (err instanceof FetchError && DEFAULT_NO_RETRY.includes(err.status ?? 0)) throw err;
+      if (err instanceof FetchError && err.status && noRetryStatus.includes(err.status)) {
+        throw err;
+      }
       lastError = err;
-      await sleep(jitter(backoffMs * 2 ** (attempt - 1)));
+      if (attempt >= retries) {
+        throw new FetchError(
+          `network error from ${url} after ${attempt} attempts: ${(err as Error).message}`,
+          url,
+          attempt,
+        );
+      }
     }
+
+    // jittered exponential backoff
+    const delay = backoffMs * Math.pow(2, attempt - 1) * (0.75 + Math.random() * 0.5);
+    await new Promise((r) => setTimeout(r, delay));
   }
 
-  throw lastError ?? new FetchError(`Failed after ${retries} attempts`, url, retries);
+  throw lastError instanceof Error
+    ? lastError
+    : new FetchError("exhausted retries", url, attempt);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-function jitter(ms: number): number {
-  return ms * (0.75 + Math.random() * 0.5);
-}
-
-function flattenHeaders(h: HeadersInit | undefined): Record<string, string> {
+function flattenHeaders(h?: HeadersInit): Record<string, string> {
   if (!h) return {};
-  if (h instanceof Headers) {
-    const out: Record<string, string> = {};
-    h.forEach((v, k) => (out[k] = v));
-    return out;
-  }
+  if (h instanceof Headers) return Object.fromEntries(h.entries());
   if (Array.isArray(h)) return Object.fromEntries(h);
   return h as Record<string, string>;
 }
