@@ -24,7 +24,7 @@ import { z } from "zod";
 import { prisma } from "@gcir/db";
 import { structured, type Citation, PerplexityDisabledError } from "./perplexity-client";
 
-// ─── public types ────────────────────────────────────────────────
+// ─── public types ──────────────────────────────────────────────────────────
 
 export type ValidationInput = {
   /** The QLAD trigger that needs validation. */
@@ -40,7 +40,7 @@ export type ValidationInput = {
 
 export type ValidationOutput = {
   publicCoverageFound: boolean;
-  publicCheck: {
+  publicCheck: z|
     summary: string;
     confidence: number;
     citations: Citation[];
@@ -55,7 +55,7 @@ export type ValidationOutput = {
   modelMix: string[];
 };
 
-// ─── public API ───────────────────────────────────────────────────────────
+// ─── public API ────────────────────────────────────────────────────────────
 
 const PublicCheckSchema = z.object({
   publicCoverageFound: z.boolean(),
@@ -90,10 +90,10 @@ Decide whether ANY credible public source already explains the land control patt
 Return strict JSON. Only set publicCoverageFound=true if a credible source explicitly identifies this site / project / sponsor with the same parish + acreage profile.`;
 
   const publicUser = `Multi-LLC land assembly under investigation:
-  Parish:    ${input.parishCounty}, ${input.state}
-  Acreage:   ${Math.round(input.totalAcres).toLocaleString()} acres
-  Window:    ${input.windowMonths.toFixed(1)} months
-  Entities:  ${buyerList}
+  Parish:     ${input.parishCounty}, ${input.state}
+  Acreage:    ${Math.round(input.totalAcres).toLocaleString()} acres
+  Window:     ${input.windowMonths.toFixed(1)} months
+  Entities:   ${buyerList}
 
 Has any credible public source — news, SEC, FERC, Bond Commission, USACE, LDEQ, port commission, county agenda — explicitly explained this assembly? If yes, summarize the disclosure and cite. If no, say so explicitly.`;
 
