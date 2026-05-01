@@ -18,7 +18,7 @@ const VOYAGER = {
       ],
       tileSize: 256,
       attribution:
-        '\u00a9 <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors \u00b7 \u00a9 <a href="https://carto.com/attributions">CARTO</a>',
+        '© <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors · © <a href="https://carto.com/attributions">CARTO</a>',
     },
   },
   layers: [{ id: "carto", type: "raster" as const, source: "carto-voyager" }],
