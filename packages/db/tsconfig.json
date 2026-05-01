@@ -1,8 +1,10 @@
 {
-  "extends": "@gcir/tsconfig/base",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "noEmit": true,
+    "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src/**/*", "prisma/**/*.ts"]
 }

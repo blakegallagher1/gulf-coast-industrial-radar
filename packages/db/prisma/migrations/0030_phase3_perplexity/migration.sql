@@ -1,18 +1,24 @@
--- Phase 3: Perplexity cache table + Alert supplementary evidence
+-- Phase 3: Perplexity validation pass + cache
+-- Adds AssemblyValidator output columns to Alert and a 7-day cache table.
 
--- PerplexityCache: memoises Perplexity Agent API calls (7-day TTL)
-CREATE TABLE IF NOT EXISTS "PerplexityCache" (
-  "id"         TEXT NOT NULL DEFAULT gen_random_uuid()::text,
-  "cacheKey"   TEXT NOT NULL,
-  "model"      TEXT NOT NULL,
-  "response"   JSONB NOT NULL,
-  "expiresAt"  TIMESTAMP(3) NOT NULL,
-  "createdAt"  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ALTER TABLE "Alert"
+  ADD COLUMN "supplementaryEvidence" JSONB,
+  ADD COLUMN "publicCoverageFound"   BOOLEAN,
+  ADD COLUMN "validationCostUsd"     DOUBLE PRECISION,
+  ADD COLUMN "validatedAt"           TIMESTAMP(3);
+
+CREATE INDEX "Alert_publicCoverageFound_createdAt_idx"
+  ON "Alert" ("publicCoverageFound", "createdAt");
+
+CREATE TABLE "PerplexityCache" (
+  "id"        TEXT NOT NULL,
+  "cacheKey"  TEXT NOT NULL,
+  "model"     TEXT NOT NULL,
+  "response"  JSONB NOT NULL,
+  "expiresAt" TIMESTAMP(3) NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "PerplexityCache_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS "PerplexityCache_cacheKey_key" ON "PerplexityCache"("cacheKey");
-CREATE INDEX IF NOT EXISTS "PerplexityCache_expiresAt_idx" ON "PerplexityCache"("expiresAt");
-
--- Alert: add supplementaryEvidence column (JSONB, nullable)
-ALTER TABLE "Alert" ADD COLUMN IF NOT EXISTS "supplementaryEvidence" JSONB;
+CREATE UNIQUE INDEX "PerplexityCache_cacheKey_key" ON "PerplexityCache" ("cacheKey");
+CREATE INDEX "PerplexityCache_expiresAt_idx" ON "PerplexityCache" ("expiresAt");

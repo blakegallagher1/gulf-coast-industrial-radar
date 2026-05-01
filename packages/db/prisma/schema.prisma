@@ -1,75 +1,641 @@
-// Prisma schema for Gulf Coast Industrial Radar
-// Run `pnpm db:migrate` after changes.
+// Gulf Coast Industrial Radar — primary schema
+// Mirrors knowledge/implementation/data-model.md
+// PostGIS extension required (managed via the migration in prisma/migrations/0_postgis/).
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
 }
 
-// ─── Core ─────────────────────────────────────────────────────────────────────
+// ============================================================================
+//  CORE TAXONOMY ENUMS
+// ============================================================================
+
+/// Free / public-source families per knowledge/sources/signal-taxonomy.md
+enum SignalFamily {
+  LAND_CONTROL
+  ENTITY_FORMATION
+  ENVIRONMENTAL_PERMIT
+  INCENTIVE
+  UTILITY_POWER
+  PORT_TERMINAL
+  PUBLIC_COMPANY
+  LOCAL_AGENDA
+  FINANCING
+  PROCUREMENT
+}
+
+/// Project lifecycle stages, ordered earliest → latest
+enum ProjectStage {
+  WATCH
+  SITE_CONTROL
+  ENTITY_FORMED
+  INCENTIVE_SURFACED
+  PERMIT_SURFACED
+  WETLANDS_WATERWAY_SURFACED
+  UTILITY_SURFACED
+  PORT_AGENDA_SURFACED
+  FINANCING_SURFACED
+  PUBLIC_ANNOUNCED
+  FID
+  EPC
+  CONSTRUCTION
+}
+
+enum Confidence {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum AnalystState {
+  UNREVIEWED
+  VALID
+  FALSE_POSITIVE
+  DUPLICATE
+  MERGED
+  SPLIT
+  WATCH
+  DISMISSED
+  ESCALATED
+}
+
+enum SourceCadence {
+  REALTIME
+  HOURLY
+  DAILY
+  WEEKLY
+  MONTHLY
+  ON_DEMAND
+}
+
+enum SourceStatus {
+  ACTIVE
+  DEGRADED
+  PAUSED
+  TODO
+  RETIRED
+}
+
+enum AccessMethod {
+  HTTP_API
+  ARCGIS_REST
+  SOCRATA
+  HTML_SCRAPE
+  RSS
+  EMAIL_DIGEST
+  BULK_DOWNLOAD
+  PDF_AGENDA
+}
+
+enum ParcelInterestKind {
+  FEE_SIMPLE
+  OPTION
+  LEASE
+  MEMORANDUM
+  EASEMENT
+  EXCLUSIVE_NEGOTIATION
+}
+
+enum EntityKind {
+  COMPANY
+  LLC
+  TRUST
+  PARTNERSHIP
+  SPONSOR
+  REGISTERED_AGENT
+  CLOSING_ATTORNEY
+  CONSULTANT
+  AGENCY
+  PORT
+  UTILITY
+  LENDER
+  RELATED_BUYER
+  INDIVIDUAL
+}
+
+enum EntityRelationship {
+  SHARES_REGISTERED_AGENT
+  SHARES_MAILING_ADDRESS
+  SHARES_OFFICER
+  SUBSIDIARY_OF
+  AFFILIATE_OF
+  CLOSED_THROUGH
+  REPRESENTED_BY
+  FUNDED_BY
+  OWNS
+  OPTIONS
+  LEASES
+  REGISTERED_AGENT_FOR
+  ANALYST_LINKED
+}
+
+enum AlertChannel {
+  IN_APP
+  EMAIL
+  SLACK
+  WEBHOOK
+}
+
+enum ActionKind {
+  MAP_ADJACENT_PARCELS
+  IDENTIFY_OWNERS
+  ESTIMATE_ASSEMBLAGE_VALUE
+  CHECK_ZONING
+  CHECK_FLOOD_WETLANDS
+  CALL_BROKER_OWNER
+  MONITOR_NEXT_BOARD
+  PREPARE_OPTION_STRATEGY
+  PURSUE_ENTITLEMENT
+  PASS
+  ESCALATE_ANALYST
+}
+
+// ============================================================================
+//  AUTH / TENANCY
+// ============================================================================
+
+model User {
+  id              String       @id @default(cuid())
+  clerkId         String       @unique
+  email           String       @unique
+  name            String?
+  imageUrl        String?
+  org             String?
+  role            String       @default("analyst")
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  watchlists      Watchlist[]
+  reviews         AnalystReview[]
+  briefRecipients BriefRecipient[]
+}
+
+// ============================================================================
+//  SOURCE REGISTRY (catalog + provenance)
+// ============================================================================
+
+model Source {
+  id            String         @id @default(cuid())
+  slug          String         @unique
+  name          String
+  jurisdiction  String         // "Louisiana · LDEQ", "Federal · USACE MVN"
+  state         String?        // "LA","TX","MS","AL","FL","US"
+  family        SignalFamily
+  url           String
+  cost          String         @default("free")
+  license       String?
+  termsReview   String?
+  cadence       SourceCadence  @default(DAILY)
+  accessMethod  AccessMethod
+  fields        Json?          // declared field map
+  notes         String?
+  status        SourceStatus   @default(ACTIVE)
+  lastRunAt     DateTime?
+  lastOkAt      DateTime?
+  lastError     String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  runs          SourceRun[]
+  rawDocuments  RawDocument[]
+  signals       Signal[]
+
+  @@index([family, status])
+  @@index([state])
+}
+
+/// One ingestion attempt of a Source
+model SourceRun {
+  id           String       @id @default(cuid())
+  sourceId     String
+  source       Source       @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  startedAt    DateTime     @default(now())
+  finishedAt   DateTime?
+  status       String       @default("running") // running | ok | partial | error
+  recordsSeen  Int          @default(0)
+  recordsNew   Int          @default(0)
+  errorMessage String?
+  cursor       Json?        // serialized resume token
+  rawDocuments RawDocument[]
+  signals      Signal[]
+
+  @@index([sourceId, startedAt])
+}
+
+/// Preserved original evidence (PDF/HTML/JSON) from a SourceRun
+model RawDocument {
+  id            String       @id @default(cuid())
+  sourceId      String
+  source        Source       @relation(fields: [sourceId], references: [id])
+  sourceRunId   String?
+  sourceRun     SourceRun?   @relation(fields: [sourceRunId], references: [id])
+  observedAt    DateTime     @default(now())
+  documentDate  DateTime?
+  url           String
+  contentHash   String       @unique
+  storageKey    String       // object-store key (s3://... or local path)
+  mimeType      String
+  bytes         Int
+  title         String?
+  excerpt       String?      @db.Text
+  metadata      Json?
+  extractedClaims ExtractedClaim[]
+  signals         Signal[]
+
+  @@index([sourceId, observedAt])
+}
+
+/// A structured fact pulled from a RawDocument by the DocumentExtraction agent
+model ExtractedClaim {
+  id              String       @id @default(cuid())
+  rawDocumentId   String
+  rawDocument     RawDocument  @relation(fields: [rawDocumentId], references: [id], onDelete: Cascade)
+  predicate       String       // "land.transfer.acres" | "permit.air.NOI.kind" | etc.
+  subject         String?      // resolved subject (parcel id, entity id, etc.)
+  value           Json
+  confidence      Float        // 0..1
+  reasonCode      String?
+  evidenceSpan    String?      @db.Text  // verbatim excerpt from raw doc
+  documentDate    DateTime?
+  observedDate    DateTime
+  createdAt       DateTime     @default(now())
+
+  @@index([predicate])
+  @@index([subject])
+}
+
+// ============================================================================
+//  PROJECT / SITE / PARCEL
+// ============================================================================
 
 model Project {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  description String?
-  status      String   @default("active")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String         @id @default(cuid())
+  publicId        String         @unique // PRJ-2026-08114
+  name            String         // "Aurora Steel Donaldsonville"
+  alias           String?        // public-announcement name when known
+  status          String         @default("suspected") // suspected | confirmed | retired
+  stage           ProjectStage   @default(WATCH)
+  confidence      Confidence     @default(MEDIUM)
+  score           Int            @default(0)  // 0..100 composite
+  scoreBreakdown  Json?          // contributor weights
+  scoreUpdatedAt  DateTime?
+  estimatedCapex  String?        // "$4.2B"
+  estimatedJobs   Int?
+  facilityType    String?        // "Primary metals", "LNG export", "DRI", "Hydrogen", ...
+  parishCounty    String?        // "Ascension Parish, LA"
+  state           String?
+  corridor        String?        // "Ascension / River corridor"
+  firstSignalAt   DateTime?
+  publicAnnouncedAt DateTime?
+  retiredAt       DateTime?
+  notes           String?        @db.Text
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
-  signals Signal[]
-  alerts  Alert[]
+  sites           Site[]
+  signals         Signal[]
+  milestones      ProjectMilestone[]
+  alerts          Alert[]
+  actions         RecommendedAction[]
+  reviews         AnalystReview[]
+  watchlistItems  WatchlistItem[]
+
+  @@index([stage, score])
+  @@index([state, parishCounty])
 }
 
-model Signal {
-  id          String   @id @default(cuid())
-  projectId   String
-  source      String
-  type        String
-  rawData     Json
-  normalised  Json
-  confidence  Float    @default(0)
-  createdAt   DateTime @default(now())
+model Site {
+  id           String     @id @default(cuid())
+  projectId    String
+  project      Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name         String?
+  centerLat    Float?
+  centerLng    Float?
+  geom         Unsupported("geometry(MultiPolygon, 4326)")?
+  totalAcres   Float?
+  contiguousAcres Float?
+  riverFrontageMi Float?
+  zoning       String?
+  floodZone    String?
+  wetlandsAcres Float?
+  infrastructureScore Float?    // 0..10
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id])
+  parcels      ParcelInterest[]
+  @@index([projectId])
+}
+
+model Parcel {
+  id              String       @id @default(cuid())
+  parishCounty    String       // "Ascension"
+  state           String       // "LA"
+  parcelNumber    String       // "0414-007"
+  acres           Float?
+  zoning          String?
+  centerLat       Float?
+  centerLng       Float?
+  geom            Unsupported("geometry(MultiPolygon, 4326)")?
+  ownerSnapshotId String?      // latest snapshot pointer
+  legalDescription String?     @db.Text
+  notes           String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  snapshots       ParcelSnapshot[]
+  interests       ParcelInterest[]
+
+  @@unique([state, parishCounty, parcelNumber])
+  @@index([state, parishCounty])
+}
+
+/// Time-specific parcel state from an assessor pull
+model ParcelSnapshot {
+  id            String   @id @default(cuid())
+  parcelId      String
+  parcel        Parcel   @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  observedAt    DateTime
+  ownerName     String?
+  ownerEntityId String?
+  saleDate      DateTime?
+  salePriceUsd  Decimal? @db.Decimal(14, 2)
+  acres         Float?
+  zoning        String?
+  assessedValueUsd Decimal? @db.Decimal(14, 2)
+  rawDocumentId String?
+  rawDocument   RawDocument? @relation(fields: [rawDocumentId], references: [id])
+  metadata      Json?
+
+  @@index([parcelId, observedAt])
+}
+
+/// Site ↔ Parcel link with the ownership / control kind
+model ParcelInterest {
+  id            String              @id @default(cuid())
+  siteId        String
+  site          Site                @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  parcelId      String
+  parcel        Parcel              @relation(fields: [parcelId], references: [id])
+  kind          ParcelInterestKind  @default(FEE_SIMPLE)
+  acquiredAt    DateTime?
+  buyerEntityId String?
+  buyerEntity   Entity?             @relation(fields: [buyerEntityId], references: [id])
+  pricePerAcre  Decimal?            @db.Decimal(12, 2)
+  totalPriceUsd Decimal?            @db.Decimal(14, 2)
+  notes         String?
+
+  @@index([siteId])
+  @@index([parcelId])
+}
+
+// ============================================================================
+//  ENTITIES (LLCs, sponsors, agents, attorneys, etc.)
+// ============================================================================
+
+model Entity {
+  id              String              @id @default(cuid())
+  name            String
+  kind            EntityKind          @default(LLC)
+  state           String?             // formed-in state
+  registrationNo  String?
+  formedAt        DateTime?
+  registeredAgent String?
+  mailingAddress  String?
+  officers        Json?               // [{ name, role }]
+  opacityScore    Float?              // 0..1
+  notes           String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  rolesA          EntityLink[] @relation("EntityFromLink")
+  rolesB          EntityLink[] @relation("EntityToLink")
+  parcelInterests ParcelInterest[]
+  signals         Signal[]
+
+  @@unique([state, registrationNo])
+  @@index([name])
+}
+
+model EntityLink {
+  id           String              @id @default(cuid())
+  fromId       String
+  from         Entity              @relation("EntityFromLink", fields: [fromId], references: [id], onDelete: Cascade)
+  toId         String
+  to           Entity              @relation("EntityToLink",   fields: [toId],   references: [id], onDelete: Cascade)
+  relationship EntityRelationship
+  confidence   Float               @default(1.0)
+  evidenceUrls Json?
+  detectedBy   String?              // "deterministic" | "analyst" | "agent"
+  createdAt    DateTime             @default(now())
+
+  @@unique([fromId, toId, relationship])
+  @@index([toId])
+}
+
+// ============================================================================
+//  SIGNALS / MILESTONES / ALERTS
+// ============================================================================
+
+model Signal {
+  id            String        @id @default(cuid())
+  projectId     String?
+  project       Project?      @relation(fields: [projectId], references: [id])
+  entityId      String?
+  entity        Entity?       @relation(fields: [entityId], references: [id])
+  family        SignalFamily
+  predicate     String        // "land.transfer", "permit.air.NOI", "incentive.itep", ...
+  subjectLabel  String        // human label for UI
+  observedAt    DateTime
+  documentDate  DateTime?
+  weight        Float
+  confidence    Float
+  payload       Json
+  rawDocumentId String?
+  rawDocument   RawDocument?  @relation(fields: [rawDocumentId], references: [id])
+  sourceId      String?
+  source        Source?       @relation(fields: [sourceId], references: [id])
+  sourceRunId   String?
+  sourceRun     SourceRun?    @relation(fields: [sourceRunId], references: [id])
+  createdAt     DateTime      @default(now())
+
+  @@index([projectId, observedAt])
+  @@index([family, observedAt])
+}
+
+model ProjectMilestone {
+  id          String        @id @default(cuid())
+  projectId   String
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fromStage   ProjectStage?
+  toStage     ProjectStage
+  occurredAt  DateTime
+  rationale   String?       @db.Text
+  changedBy   String?
+  evidenceIds Json?
+  createdAt   DateTime      @default(now())
+
+  @@index([projectId, occurredAt])
 }
 
 model Alert {
-  id                    String   @id @default(cuid())
+  id                    String       @id @default(cuid())
   projectId             String
-  type                  String
-  severity              String   @default("medium")
-  summary               String
-  detail                Json?
-  // Phase 3: AssemblyValidator supplementary evidence
-  supplementaryEvidence Json?
-  status                String   @default("open")
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  project               Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title                 String
+  body                  String       @db.Text
+  reasonCode            String?
+  channel               AlertChannel @default(IN_APP)
+  score                 Int
+  scoreDelta            Int          @default(0)
+  publishedAt           DateTime?
+  silencedAt            DateTime?
+  watchlistId           String?
+  watchlist             Watchlist?   @relation(fields: [watchlistId], references: [id])
 
-  project Project @relation(fields: [projectId], references: [id])
+  // Perplexity validation results (Phase 3)
+  /// AssemblyValidator output: { publicCheck: {...}, entityResearch: [...] }
+  supplementaryEvidence Json?
+  /// True when Perplexity finds public coverage already explaining the assembly
+  publicCoverageFound   Boolean?
+  /// USD spent on the validation pass (sum of public-check + entity-research)
+  validationCostUsd     Float?
+  /// When the AssemblyValidator last ran on this alert
+  validatedAt           DateTime?
+
+  createdAt             DateTime     @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([publicCoverageFound, createdAt])
 }
 
+model RecommendedAction {
+  id           String       @id @default(cuid())
+  projectId    String
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  kind         ActionKind
+  rank         Int          @default(0)
+  title        String
+  rationale    String       @db.Text
+  confidence   Float
+  reasonCode   String?
+  estTimeMin   Int?
+  payload      Json?
+  status       String       @default("pending") // pending | accepted | rejected | done
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([projectId, rank])
+}
+
+model AnalystReview {
+  id            String       @id @default(cuid())
+  projectId     String?
+  project       Project?     @relation(fields: [projectId], references: [id])
+  reviewerId    String?
+  reviewer      User?        @relation(fields: [reviewerId], references: [id])
+  state         AnalystState @default(UNREVIEWED)
+  note          String?      @db.Text
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([projectId, state])
+}
+
+// ============================================================================
+//  WATCHLISTS / BRIEFS
+// ============================================================================
+
+model Watchlist {
+  id          String           @id @default(cuid())
+  userId      String?
+  user        User?            @relation(fields: [userId], references: [id])
+  name        String
+  description String?
+  isShared    Boolean          @default(false)
+  filter      Json             // serialized filter — corridor, parishes, score band, signal families, acreage
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  items       WatchlistItem[]
+  alerts      Alert[]
+}
+
+model WatchlistItem {
+  id          String      @id @default(cuid())
+  watchlistId String
+  watchlist   Watchlist   @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  pinned      Boolean     @default(false)
+  notes       String?
+  createdAt   DateTime    @default(now())
+
+  @@unique([watchlistId, projectId])
+}
+
+model Brief {
+  id              String           @id @default(cuid())
+  issueNumber     Int              @unique
+  title           String
+  windowStart     DateTime
+  windowEnd       DateTime
+  narrative       String           @db.Text
+  topMovers       Json             // ranked array of project ids + deltas
+  recommendedActions Json
+  sourceHealth    Json
+  publishedAt     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  recipients      BriefRecipient[]
+}
+
+model BriefRecipient {
+  id          String   @id @default(cuid())
+  briefId     String
+  brief       Brief    @relation(fields: [briefId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  email       String?
+  sentAt      DateTime?
+  openedAt    DateTime?
+  clickedAt   DateTime?
+
+  @@index([briefId])
+}
+
+// ============================================================================
+//  AGENT / EVAL TELEMETRY (lightweight)
+// ============================================================================
+
 model AgentRun {
-  id          String    @id @default(cuid())
-  agent       String
-  startedAt   DateTime
+  id          String   @id @default(cuid())
+  agent       String   // "DocumentExtraction" | "ProjectFormationScoring" | etc.
+  projectId   String?
+  startedAt   DateTime @default(now())
   finishedAt  DateTime?
-  status      String
+  status      String   @default("running")
+  inputHash   String?
   outputJson  Json?
-  costUsd     Float     @default(0)
-  latencyMs   Int       @default(0)
-  createdAt   DateTime  @default(now())
+  costUsd     Float?
+  latencyMs   Int?
+  errorMsg    String?
 
   @@index([agent, startedAt])
 }
 
-// ─── Phase 3: Perplexity cache ────────────────────────────────────────────────
+// ============================================================================
+//  PERPLEXITY CACHE (Phase 3)
+// ============================================================================
 
+/// 7-day cache for Perplexity Agent API calls. Keyed by sha256 of
+/// (model, schemaName, systemPrompt, user). Expired rows are pruned weekly.
 model PerplexityCache {
   id        String   @id @default(cuid())
   cacheKey  String   @unique
