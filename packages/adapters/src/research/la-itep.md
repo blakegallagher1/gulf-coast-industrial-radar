@@ -86,7 +86,7 @@ No URL or portal schema changes documented.
    > ITEP was one of the largest state industrial subsidy programs in the nation, offering a 100% property tax exemption for as long as 10 years on capital ...
 
 10. [BUSINESS INCENTIVE GUIDE - Louisiana Economic Development (PDF)](https://admin.opportunitylouisiana.gov/wp-content/uploads/2026/01/LED-Incentive-Book-006.pdf)
-    > The program offers tax credits to accredited investors that invest startup and expansion capital in businesses certified by Louisiana Economic Development.
+    > The program offers tax credits to accredited investors that invest startup and expansion capital in businesses certified by Louisiana Economic ...
 
 11. [LOUISIANA INDUSTRIAL TAX EXEMPTION PROGRAM (PDF)](https://iberiabiz.org/wp-content/uploads/ITE_Application.pdf)
     > INSTRUCTIONS: Complete all areas of requested information before submitting this application to our office.
