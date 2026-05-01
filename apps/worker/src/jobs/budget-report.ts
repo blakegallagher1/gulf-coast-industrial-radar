@@ -7,21 +7,30 @@
  *      "Perplexity.<name>" or "OpenAI.<name>" — split out by backend.
  *   2. Compare today's total against PERPLEXITY_DAILY_BUDGET_USD.
  *   3. Log a markdown-friendly table to stdout (analyst-readable).
- *   4. If SLACK_BUDGET_WEBHOOK_URL is set AND total > 75% of cap, post a
- *      single condensed alert. Re-runs in the same UTC day are deduped via
- *      an in-memory `lastSlackPostedDay` flag so we don't spam.
+ *   4. If RESEND_API_KEY + BUDGET_ALERT_TO_EMAIL are set AND total >=
+ *      BUDGET_ALERT_THRESHOLD (default 0.75 = 75% of cap), send a single
+ *      condensed email per UTC day. Re-runs in the same day are deduped
+ *      via an in-memory `lastEmailedDay` flag so we don't spam.
+ *
+ * Push channel: email is the right tool for budget alerts — they're
+ * "I should be aware" signals, not "drop everything" pages. Once-a-day
+ * cadence keeps the inbox clean. The /admin/runs page surfaces the same
+ * info as a pull channel (red banner at top when the day is over cap).
  *
  * Idempotent + side-effect-light: this job only reads + logs + (optionally)
- * fires one webhook per UTC day. No DB writes.
+ * sends one email per UTC day. No DB writes.
  */
 
 import { prisma } from "@gcir/db";
 
 const DAILY_CAP = Number(process.env.PERPLEXITY_DAILY_BUDGET_USD ?? "50");
 const ALERT_THRESHOLD = Number(process.env.BUDGET_ALERT_THRESHOLD ?? "0.75");
-const SLACK_URL = process.env.SLACK_BUDGET_WEBHOOK_URL ?? "";
+const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
+const ALERT_TO_EMAIL = process.env.BUDGET_ALERT_TO_EMAIL ?? "";
+const ALERT_FROM_EMAIL = process.env.BRIEF_FROM_EMAIL ??
+  "Gulf Coast Industrial Radar <radar@gallagherpropco.com>";
 
-let lastSlackPostedDay: string | null = null;
+let lastEmailedDay: string | null = null;
 
 export type BudgetRow = {
   agent: string;
@@ -112,42 +121,94 @@ export async function tickBudgetReport(): Promise<void> {
     console.log(line);
   }
 
-  // ── Slack alert at >= 75% of cap, deduped per UTC day
-  if (
-    SLACK_URL &&
-    report.pctOfCap >= ALERT_THRESHOLD &&
-    lastSlackPostedDay !== dayKey
-  ) {
+  // ── Email alert at >= 75% of cap, deduped per UTC day
+  const canEmail = RESEND_API_KEY && ALERT_TO_EMAIL;
+  if (canEmail && report.pctOfCap >= ALERT_THRESHOLD && lastEmailedDay !== dayKey) {
     try {
-      await postSlackAlert(report);
-      lastSlackPostedDay = dayKey;
+      await postEmailAlert(report);
+      lastEmailedDay = dayKey;
     } catch (err) {
-      console.warn("[budget] Slack post failed:", (err as Error).message);
+      console.warn("[budget] email send failed:", (err as Error).message);
     }
   }
 }
 
-async function postSlackAlert(report: BudgetReport): Promise<void> {
+/**
+ * Send a budget-alert email via the Resend HTTP API. Direct fetch (no SDK
+ * dep) — same lightweight pattern as the worker's other transport-style calls.
+ *
+ * One email per UTC day, capped by `lastEmailedDay`. Subject carries the
+ * percentage so it's scannable in an inbox; HTML body has the table of top
+ * contributors so you can decide whether to act without opening /admin/runs.
+ */
+async function postEmailAlert(report: BudgetReport): Promise<void> {
   const dayKey = report.windowStart.toISOString().slice(0, 10);
-  const top = report.rows
+  const pct = (report.pctOfCap * 100).toFixed(0);
+  const subject = `[GCIR] Perplexity spend at ${pct}% of daily cap (${dayKey} UTC)`;
+
+  const topRows = report.rows
     .slice(0, 5)
-    .map((r) => `• \`${r.agent}\` (${r.backend}) — $${r.totalCostUsd.toFixed(2)} · ${r.runs} runs`)
-    .join("\n");
+    .map((r) => {
+      const cost = `$${r.totalCostUsd.toFixed(2)}`;
+      const backendLabel = r.backend === "perplexity" ? "Perplexity" : "OpenAI";
+      return `<tr>
+        <td style="padding:6px 12px;border-bottom:1px solid #eee;font-family:monospace">${escapeHtml(r.agent)}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #eee;color:#666">${backendLabel}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #eee;text-align:right;font-family:monospace">${cost}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #eee;text-align:right;color:#666">${r.runs} runs</td>
+      </tr>`;
+    })
+    .join("");
 
-  const text = [
-    `:warning: GCIR Perplexity spend at ${(report.pctOfCap * 100).toFixed(0)}% of daily cap`,
-    `*${dayKey} UTC* — \`$${report.totalUsd.toFixed(2)} / $${report.capUsd.toFixed(2)}\``,
-    "",
-    "Top contributors:",
-    top || "(none)",
-  ].join("\n");
+  const html = `<!DOCTYPE html>
+<html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#222;max-width:560px;margin:0 auto;padding:24px">
+  <div style="background:#fff5e6;border:1px solid #f5a623;border-radius:6px;padding:16px;margin-bottom:18px">
+    <div style="font-size:14px;color:#666;letter-spacing:0.04em;text-transform:uppercase;font-weight:600">Daily budget alert</div>
+    <div style="font-size:24px;font-weight:600;margin-top:4px">$${report.totalUsd.toFixed(2)} / $${report.capUsd.toFixed(2)} (${pct}%)</div>
+    <div style="font-size:13px;color:#666;margin-top:4px">${dayKey} UTC · Gulf Coast Industrial Radar</div>
+  </div>
+  <p style="margin:0 0 6px 0;font-size:13px;color:#666;letter-spacing:0.04em;text-transform:uppercase;font-weight:600">Top contributors today</p>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px">
+    <thead><tr>
+      <th style="text-align:left;padding:6px 12px;border-bottom:2px solid #ddd;font-weight:600">Agent</th>
+      <th style="text-align:left;padding:6px 12px;border-bottom:2px solid #ddd;font-weight:600">Backend</th>
+      <th style="text-align:right;padding:6px 12px;border-bottom:2px solid #ddd;font-weight:600">Cost</th>
+      <th style="text-align:right;padding:6px 12px;border-bottom:2px solid #ddd;font-weight:600">Runs</th>
+    </tr></thead>
+    <tbody>${topRows || `<tr><td colspan="4" style="padding:6px 12px;color:#999">No contributors yet</td></tr>`}</tbody>
+  </table>
+  <p style="font-size:12px;color:#888;line-height:1.5;border-top:1px solid #eee;padding-top:12px">
+    Threshold via <code>BUDGET_ALERT_THRESHOLD</code> (currently ${(ALERT_THRESHOLD * 100).toFixed(0)}%).
+    Hard cap via <code>PERPLEXITY_DAILY_BUDGET_USD</code>. Per-agent rollback via
+    <code>AGENT_BACKEND_&lt;NAME&gt;=openai</code>. Full table at <code>/admin/runs</code>.
+  </p>
+</body></html>`;
 
-  const res = await fetch(SLACK_URL, {
+  const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+    },
+    body: JSON.stringify({
+      from: ALERT_FROM_EMAIL,
+      to: [ALERT_TO_EMAIL],
+      subject,
+      html,
+    }),
   });
   if (!res.ok) {
-    throw new Error(`Slack ${res.status} ${res.statusText}`);
+    const body = await res.text().catch(() => "");
+    throw new Error(`Resend ${res.status} ${res.statusText}${body ? ` — ${body.slice(0, 200)}` : ""}`);
   }
+}
+
+/** Minimal HTML escaper for agent names (defensive — they're already
+ *  trusted strings, but email body shouldn't break on a future "&"). */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
