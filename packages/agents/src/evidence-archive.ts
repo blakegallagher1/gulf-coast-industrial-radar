@@ -1,74 +1,58 @@
 /**
- * EvidenceArchiveAgent — fetches the full content of a source URL,
- * stores it to the evidence store, and returns a structured summary.
+ * EvidenceArchiveAgent — fetches the full content (PDF, HTML body) for any
+ * RawDocument that was indexed by URL only (e.g., USACE PDFs, EDGAR filings).
+ *
+ * Called by the worker after SourceWatcher when a RawDocument's bytes column
+ * holds only a URL pointer or a stub JSON.
  */
 
-import { z } from "zod";
-import { openai, MODEL } from "./openai-client";
-import { fetchWithRetry } from "@gcir/adapters";
-import { saveEvidence } from "@gcir/adapters";
-import type { AdapterRecord } from "@gcir/adapters";
+import { prisma, type RawDocument } from "@gcir/db";
+import { fetchWithRetry, storeEvidence } from "@gcir/adapters";
 
-const EvidenceSummarySchema = z.object({
-  title: z.string(),
-  excerpt: z.string().max(500),
-  documentType: z.string(),
-  relevanceScore: z.number().min(0).max(1),
-});
+export async function deepenEvidence(rawDocumentId: string): Promise<void> {
+  const doc = await prisma.rawDocument.findUnique({ where: { id: rawDocumentId } });
+  if (!doc) throw new Error(`evidence-archive: missing RawDocument ${rawDocumentId}`);
+  if (doc.mimeType.startsWith("application/pdf") || doc.mimeType.startsWith("text/html")) {
+    return; // already deepened
+  }
+  if (!doc.url || !/^https?:/.test(doc.url)) return;
 
-export type EvidenceSummary = z.infer<typeof EvidenceSummarySchema>;
-
-export async function runEvidenceArchiveAgent(input: {
-  sourceUrl: string;
-  sourceSlug: string;
-  projectContext?: string;
-}): Promise<EvidenceSummary & { evidenceUri: string }> {
-  const res = await fetchWithRetry(input.sourceUrl, {
-    timeoutMs: 30_000,
-    userAgent: "GulfCoastIndustrialRadar/0.1 contact@gallagherpropco.com",
+  const res = await fetchWithRetry(doc.url, {
+    timeoutMs: 45_000,
+    userAgent: process.env.SEC_EDGAR_USER_AGENT ?? "GulfCoastIndustrialRadar/0.1",
   });
-  const text = await res.text();
-  const mime = res.headers.get("content-type") ?? "text/html";
+  const ct = (res.headers.get("content-type") ?? "application/octet-stream").split(";")[0];
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.byteLength === 0) return;
 
-  // Store raw bytes
-  const mockRecord: AdapterRecord = {
-    externalId: `evidence:${input.sourceUrl}`,
-    family: "EVIDENCE",
-    predicate: "evidence.archived",
-    subjectLabel: input.sourceUrl,
-    observedAt: new Date(),
-    confidence: 1,
-    url: input.sourceUrl,
-    rawBytes: text,
-    rawMime: mime,
-    payload: {},
-  };
-  const evidenceRef = await saveEvidence(mockRecord);
-
-  // Summarise via GPT-4o
-  const completion = await openai.beta.chat.completions.parse({
-    model: MODEL,
-    messages: [
-      {
-        role: "system",
-        content:
-          "Summarise the industrial intelligence content from this document. Extract the title, a useful excerpt, document type, and relevance to Gulf Coast industrial development.",
-      },
-      {
-        role: "user",
-        content: `URL: ${input.sourceUrl}\n\nContext: ${input.projectContext ?? "general"}\n\n${text.slice(0, 10000)}`,
-      },
-    ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "evidence_summary",
-        schema: EvidenceSummarySchema._def,
-        strict: true,
-      },
-    },
+  // Write the deepened evidence as a NEW RawDocument linked back to the seed.
+  await storeEvidence({
+    sourceId: doc.sourceId,
+    sourceRunId: doc.sourceRunId ?? undefined,
+    url: doc.url,
+    bytes: buf,
+    mimeType: ct,
+    title: doc.title ?? undefined,
+    documentDate: doc.documentDate ?? undefined,
+    metadata: { ...((doc.metadata as object) ?? {}), deepenedFrom: doc.id },
   });
+}
 
-  const summary = completion.choices[0].message.parsed!;
-  return { ...summary, evidenceUri: evidenceRef.uri };
+/** Process a small batch of stubs each tick. */
+export async function deepenEvidenceBatch(limit = 10): Promise<number> {
+  const stubs: RawDocument[] = await prisma.rawDocument.findMany({
+    where: { mimeType: { in: ["application/json", "text/plain"] } },
+    orderBy: { observedAt: "desc" },
+    take: limit,
+  });
+  let processed = 0;
+  for (const s of stubs) {
+    try {
+      await deepenEvidence(s.id);
+      processed++;
+    } catch {
+      // single failure shouldn't abort the batch; logged via SourceRun in caller
+    }
+  }
+  return processed;
 }

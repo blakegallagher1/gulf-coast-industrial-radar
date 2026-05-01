@@ -1,49 +1,29 @@
 /**
- * SiteScoringAgent — applies the site-fit scoring engine and interprets the result.
+ * SiteScoringAgent — applies the site-fit scoring engine to a Site row.
+ * No LLM call required; this is deterministic but lives here so the worker
+ * can call it as part of the scoring pipeline.
  */
 
-import { z } from "zod";
-import { openai, MODEL } from "./openai-client";
+import { prisma } from "@gcir/db";
 import { scoreSiteFit } from "@gcir/scoring";
-import type { SiteFitInput } from "@gcir/scoring";
 
-const SiteScoringOutputSchema = z.object({
-  interpretation: z.string().max(400),
-  keyStrengths: z.array(z.string()).max(5),
-  keyWeaknesses: z.array(z.string()).max(5),
-  recommendedUseTypes: z.array(z.string()).max(5),
-});
+export async function scoreSiteById(siteId: string): Promise<number> {
+  const site = await prisma.site.findUnique({ where: { id: siteId } });
+  if (!site) throw new Error(`SiteScoring: missing site ${siteId}`);
 
-export type SiteScoringOutput = z.infer<typeof SiteScoringOutputSchema>;
-
-export async function runSiteScoringAgent(input: {
-  siteFitInput: SiteFitInput;
-  locationDescription: string;
-}): Promise<{ score: number; output: SiteScoringOutput }> {
-  const result = scoreSiteFit(input.siteFitInput);
-
-  const completion = await openai.beta.chat.completions.parse({
-    model: MODEL,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a Gulf Coast industrial site analyst. Interpret this site fitness score for an industrial real-estate investor.",
-      },
-      {
-        role: "user",
-        content: JSON.stringify({ location: input.locationDescription, result }),
-      },
-    ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "site_scoring_output",
-        schema: SiteScoringOutputSchema._def,
-        strict: true,
-      },
-    },
+  const result = scoreSiteFit({
+    totalAcres: site.totalAcres ?? 0,
+    riverFrontageMi: site.riverFrontageMi ?? undefined,
+    zoning: site.zoning ?? undefined,
+    floodZone: site.floodZone ?? undefined,
+    wetlandsAcres: site.wetlandsAcres ?? undefined,
+    nearbyInfra: [],
   });
 
-  return { score: result.score, output: completion.choices[0].message.parsed! };
+  await prisma.site.update({
+    where: { id: siteId },
+    data: { infrastructureScore: result.score },
+  });
+
+  return result.score;
 }

@@ -93,7 +93,7 @@ export type { Citation } from "./perplexity-runtime";
 const FEATURE_FLAG = process.env.FEATURE_PERPLEXITY_VALIDATION === "true";
 const DAILY_BUDGET = Number(process.env.PERPLEXITY_DAILY_BUDGET_USD ?? "50");
 
-// ─── public errors ────────────────────────────────────────────────────
+// ─── public errors ───────────────────────────────────────────────────────────
 
 export class PerplexityDisabledError extends Error {
   constructor() {
@@ -112,7 +112,7 @@ export class PerplexityBudgetExceededError extends Error {
   }
 }
 
-// ─── budget guard ──────────────────────────────────────────────────
+// ─── budget guard ───────────────────────────────────────────────────────────
 
 async function assertBudget(): Promise<void> {
   if (!FEATURE_FLAG) throw new PerplexityDisabledError();
@@ -126,7 +126,7 @@ async function assertBudget(): Promise<void> {
   if (spent >= DAILY_BUDGET) throw new PerplexityBudgetExceededError(spent, DAILY_BUDGET);
 }
 
-// ─── caching ─────────────────────────────────────────────────────────────
+// ─── caching ─────────────────────────────────────────────────────────────────
 
 function cacheKey(parts: unknown[]): string {
   return createHash("sha256").update(JSON.stringify(parts)).digest("hex");
@@ -148,7 +148,7 @@ async function writeCache(key: string, model: string, response: unknown, ttlDays
   });
 }
 
-// ─── core helpers ──────────────────────────────────────────────────
+// ─── core helpers ───────────────────────────────────────────────────────────
 
 export type PplxStructuredArgs<T> = {
   agent: string;                       // e.g. "AssemblyValidator.publicCheck"
@@ -350,7 +350,7 @@ export async function text(args: PplxTextArgs): Promise<{
     },
   });
 
-  return { text: out, citations, costUsd, latencyMs: latencyMs, model: respModel, cached: false };
+  return { text: out, citations, costUsd, latencyMs, model: respModel, cached: false };
 }
 
 /** Convenience for dev-time deep-research jobs (deep-research preset). */
@@ -358,7 +358,7 @@ export async function deepResearch(args: Omit<PplxTextArgs, "modelKey">): Promis
   return text({ ...args, modelKey: "deep", temperature: 0.2, tools: args.tools ?? ["web_search", "url_fetch"] });
 }
 
-// ─── transport ─────────────────────────────────────────────────────────────
+// ─── transport ─────────────────────────────────────────────────────────────────
 
 /**
  * Agent API request shape. Either `model` OR `preset` must be present;

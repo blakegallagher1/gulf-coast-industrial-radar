@@ -1,55 +1,70 @@
 /**
- * ProjectFormationScoringAgent — recomputes the formation score for a project
- * using the scoring engine + AI-enhanced interpretation.
- *
- * Returns both a raw numeric score and an AI-written interpretation.
+ * ProjectFormationScoringAgent — recomputes the composite formation score
+ * for a project from its current set of signals. Persists the breakdown
+ * to project.scoreBreakdown for the radar UI.
  */
 
-import { z } from "zod";
-import { openai, MODEL } from "./openai-client";
+import { prisma, type SignalFamily } from "@gcir/db";
 import { scoreProjectFormation } from "@gcir/scoring";
-import type { ProjectFormationInput } from "@gcir/scoring";
+import type { SignalFamily as SharedSignalFamily } from "@gcir/shared";
 
-const ScoringInterpretationSchema = z.object({
-  scoreInterpretation: z.string().max(400),
-  topFactors: z.array(z.string()).max(5),
-  nextSignalsToWatch: z.array(z.string()).max(5),
-});
+export async function scoreProjectById(projectId: string): Promise<{
+  score: number;
+  band: string;
+}> {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: { signals: { orderBy: { observedAt: "desc" }, take: 200 } },
+  });
+  if (!project) throw new Error(`scoreProjectById: missing ${projectId}`);
 
-export type ScoringInterpretation = z.infer<typeof ScoringInterpretationSchema>;
+  const announcedAt = project.publicAnnouncedAt;
+  const publicPenalty = announcedAt ? clamp01((Date.now() - announcedAt.getTime()) / (90 * 24 * 60 * 60 * 1000)) : 0;
 
-export async function runProjectFormationScoringAgent(input: {
-  projectId: string;
-  scoringInput: ProjectFormationInput;
-  projectName: string;
-}): Promise<{ score: number; interpretation: ScoringInterpretation }> {
-  const result = scoreProjectFormation(input.scoringInput);
+  const result = scoreProjectFormation({
+    signals: project.signals.map((s) => ({
+      family: s.family as unknown as SharedSignalFamily,
+      confidence: s.confidence,
+      saturation: 1.0,
+    })),
+    publicAnnouncementPenalty: publicPenalty,
+  });
 
-  const completion = await openai.beta.chat.completions.parse({
-    model: MODEL,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a Gulf Coast industrial development analyst. Interpret this project formation scoring result and explain what the scores mean for an investor.",
-      },
-      {
-        role: "user",
-        content: JSON.stringify({ projectName: input.projectName, scoringResult: result }),
-      },
-    ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "scoring_interpretation",
-        schema: ScoringInterpretationSchema._def,
-        strict: true,
-      },
+  await prisma.project.update({
+    where: { id: projectId },
+    data: {
+      score: result.score,
+      scoreBreakdown: {
+        contributions: result.contributions,
+        rawSum: result.rawSum,
+        penaltyApplied: result.penaltyApplied,
+        band: result.band,
+      } as never,
+      scoreUpdatedAt: new Date(),
     },
   });
 
-  return {
-    score: result.score,
-    interpretation: completion.choices[0].message.parsed!,
-  };
+  return { score: result.score, band: result.band };
 }
+
+/** Recompute scores for every project — useful after a weight change. */
+export async function rescoreAllProjects(): Promise<number> {
+  const ids = await prisma.project.findMany({ select: { id: true } });
+  let n = 0;
+  for (const { id } of ids) {
+    try {
+      await scoreProjectById(id);
+      n++;
+    } catch {
+      /* keep going */
+    }
+  }
+  return n;
+}
+
+function clamp01(x: number): number {
+  return Number.isNaN(x) ? 0 : Math.max(0, Math.min(1, x));
+}
+
+// Silence unused-type warning when consumers import the alias.
+export type { SignalFamily };
