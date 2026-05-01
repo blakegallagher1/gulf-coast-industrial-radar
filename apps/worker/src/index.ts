@@ -12,6 +12,8 @@
  *                                       optional FEATURE_PERPLEXITY_VALIDATION)
  *   - actions              every 1h   · regenerate top-of-feed actions
  *   - brief                Mon 06:00  · weekly investor brief draft
+ *   - budget-report        every 4h   · daily AgentRun cost rollup +
+ *                                       Slack alert at ≥75% of daily cap
  */
 
 import "dotenv/config";
@@ -28,6 +30,7 @@ import {
   writeWeeklyBrief,
 } from "@gcir/agents";
 import { tickQlad } from "./jobs/qlad-evaluate";
+import { tickBudgetReport } from "./jobs/budget-report";
 
 const enabled = (process.env.WORKER_CRON_ENABLED ?? "false") === "true";
 
@@ -142,8 +145,9 @@ async function bootstrap() {
   new Cron("*/20 * * * *", { protect: true }, tickQlad);
   new Cron("0 * * * *",    { protect: true }, tickActions);
   new Cron("0 6 * * 1",    { protect: true }, tickBrief);
+  new Cron("0 */4 * * *",  { protect: true }, tickBudgetReport);
 
-  console.log("✓ schedulers active. Press ^C to stop.");
+  console.log("✓ schedulers active. Press ^C to stop .");
 }
 
 bootstrap().catch((err) => {
