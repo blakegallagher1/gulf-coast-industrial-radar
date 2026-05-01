@@ -1,84 +1,93 @@
 /**
- * Project Formation Scoring Engine
+ * Project Formation Score — weighted composite across signal families.
+ * Mirrors the scoring weights in knowledge/sources/signal-taxonomy.md.
  *
- * Scores how likely a cluster of signals represents a real industrial project
- * forming on the Gulf Coast. Pure function — no DB or network calls.
+ * Inputs:
+ *   - signals: distinct signal families that fire for the project,
+ *              each with a 0..1 confidence
+ *   - penalties: contradictory evidence, public-announcement penalty
  */
-import type { SignalType } from '@gcir/shared'
 
-export interface ProjectFormationInput {
-  /** Number of signals in the cluster */
-  signalCount: number
-  /** Unique source types present (e.g. ["PERMIT", "FILING"]) */
-  signalTypes: SignalType[]
-  /** Estimated total investment in USD */
-  estimatedInvestmentUsd?: number
-  /** Estimated jobs */
-  estimatedJobs?: number
-  /** Days since first signal */
-  daysSinceFirstSignal: number
-  /** Days since most recent signal */
-  daysSinceLastSignal: number
-  /** Geographic spread of signals (km) */
-  geographicSpreadKm?: number
-}
+import { SIGNAL_WEIGHTS, type SignalFamily, scoreBand, type ScoreBand } from "@gcir/shared";
 
-export interface ProjectFormationScore {
-  score: number // 0–1
-  factors: {
-    signalDiversity: number
-    signalVolume: number
-    recency: number
-    investmentScale: number
-    geographic: number
-  }
-  confidence: number
-}
+export type SignalContribution = {
+  family: SignalFamily;
+  /** 0..1, how confident we are that this family fired for THIS project. */
+  confidence: number;
+  /** Optional sub-weight (default 1.0) for partial firings (e.g., NOI vs. permit grant). */
+  saturation?: number;
+};
 
-const HIGH_VALUE_SIGNAL_TYPES: SignalType[] = ['PERMIT', 'FILING', 'REGULATORY', 'PROCUREMENT']
+export type FormationInput = {
+  signals: SignalContribution[];
+  /** Subtract for stale or already-public information. */
+  publicAnnouncementPenalty?: number; // 0..1; 1.0 = full subtraction
+  /** Subtract when contradictory evidence is observed. */
+  contradictoryEvidencePenalty?: number; // 0..1
+  /** Bump for cross-corridor entity matches that strengthen the signal. */
+  crossCorridorBoost?: number; // 0..15
+};
 
-export function scoreProjectFormation(input: ProjectFormationInput): ProjectFormationScore {
-  // 1. Signal diversity (0–1): reward presence of multiple types
-  const diverseTypes = input.signalTypes.filter((t) => HIGH_VALUE_SIGNAL_TYPES.includes(t))
-  const signalDiversity = Math.min(diverseTypes.length / 3, 1)
+export type FormationResult = {
+  score: number;          // 0..100, integer
+  band: ScoreBand;
+  contributions: Array<{
+    family: SignalFamily;
+    weight: number;
+    confidence: number;
+    saturation: number;
+    contribution: number;
+  }>;
+  penaltyApplied: number;
+  rawSum: number;
+};
 
-  // 2. Signal volume (0–1): log scale capped at 20
-  const signalVolume = Math.min(Math.log10(input.signalCount + 1) / Math.log10(21), 1)
-
-  // 3. Recency (0–1): penalise stale signals
-  const recency = Math.max(0, 1 - input.daysSinceLastSignal / 180)
-
-  // 4. Investment scale (0–1): $100M = 0.5, $1B = 0.8, $5B+ = 1.0
-  let investmentScale = 0
-  if (input.estimatedInvestmentUsd) {
-    const b = input.estimatedInvestmentUsd / 1_000_000_000
-    investmentScale = Math.min(b / 5, 1)
+export function scoreProjectFormation(input: FormationInput): FormationResult {
+  // Aggregate by family — only highest contribution per family counts.
+  const byFamily = new Map<SignalFamily, SignalContribution>();
+  for (const s of input.signals) {
+    const prev = byFamily.get(s.family);
+    if (!prev || prev.confidence * (prev.saturation ?? 1) < s.confidence * (s.saturation ?? 1)) {
+      byFamily.set(s.family, s);
+    }
   }
 
-  // 5. Geographic coherence (0–1): tighter clusters score higher
-  let geographic = 0.5
-  if (input.geographicSpreadKm !== undefined) {
-    geographic = Math.max(0, 1 - input.geographicSpreadKm / 50)
+  const contributions: FormationResult["contributions"] = [];
+  let rawSum = 0;
+
+  for (const [family, sig] of byFamily) {
+    const w = SIGNAL_WEIGHTS[family] ?? 0;
+    const sat = sig.saturation ?? 1;
+    const c = clamp01(sig.confidence) * clamp01(sat);
+    const contribution = w * c;
+    rawSum += contribution;
+    contributions.push({
+      family,
+      weight: w,
+      confidence: clamp01(sig.confidence),
+      saturation: clamp01(sat),
+      contribution,
+    });
   }
 
-  const score =
-    signalDiversity * 0.3 +
-    signalVolume * 0.2 +
-    recency * 0.2 +
-    investmentScale * 0.2 +
-    geographic * 0.1
+  // Penalties (additive, applied as % of raw sum).
+  const pa = clamp01(input.publicAnnouncementPenalty ?? 0);
+  const cp = clamp01(input.contradictoryEvidencePenalty ?? 0);
+  const penaltyApplied = rawSum * (pa * 0.6 + cp * 0.4);
+  const cross = Math.max(0, Math.min(15, input.crossCorridorBoost ?? 0));
 
-  const confidence = Math.min((input.signalCount / 5) * 0.8 + 0.2, 1)
+  const composite = Math.max(0, Math.min(100, Math.round(rawSum + cross - penaltyApplied)));
 
   return {
-    score: Math.round(score * 1000) / 1000,
-    factors: {
-      signalDiversity: Math.round(signalDiversity * 1000) / 1000,
-      signalVolume: Math.round(signalVolume * 1000) / 1000,
-      recency: Math.round(recency * 1000) / 1000,
-      investmentScale: Math.round(investmentScale * 1000) / 1000,
-      geographic: Math.round(geographic * 1000) / 1000,
-    },
-    confidence: Math.round(confidence * 1000) / 1000,
-  }
+    score: composite,
+    band: scoreBand(composite),
+    contributions: contributions.sort((a, b) => b.contribution - a.contribution),
+    penaltyApplied,
+    rawSum,
+  };
+}
+
+function clamp01(x: number): number {
+  if (Number.isNaN(x)) return 0;
+  return x < 0 ? 0 : x > 1 ? 1 : x;
 }

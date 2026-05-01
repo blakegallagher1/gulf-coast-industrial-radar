@@ -1,3 +1,3 @@
-export * from './constants'
-export * from './geography'
-export * from './taxonomy'
+export * from "./constants";
+export * from "./taxonomy";
+export * from "./geography";

@@ -1,89 +1,90 @@
 /**
- * Site Fit Scoring Engine
+ * Site Fit Score — does this site/parcel cluster look industrially viable
+ * independent of the project formation evidence?
  *
- * Scores how well a geographic location fits Gulf Coast industrial development.
- * Pure function — no DB or network calls.
+ * Inputs: infrastructure proximity, zoning, flood/wetlands constraint,
+ * acreage, corridor context.
+ *
+ * Output: 0..10, the same scale users see in the drawer "Infrastructure score".
  */
 
-export interface SiteFitInput {
-  /** Distance to nearest navigable waterway (km) */
-  distanceToWaterwayKm?: number
-  /** Distance to nearest Class I railroad (km) */
-  distanceToRailKm?: number
-  /** Distance to nearest interstate highway (km) */
-  distanceToInterstateKm?: number
-  /** Distance to nearest HV transmission line (km) */
-  distanceToTransmissionKm?: number
-  /** Distance to nearest natural gas pipeline (km) */
-  distanceToGasPipelineKm?: number
-  /** Whether site is in a designated industrial zone */
-  inIndustrialZone: boolean
-  /** Whether site is in a designated Opportunity Zone */
-  inOpportunityZone: boolean
-  /** Whether site is in a Foreign Trade Zone */
-  inForeignTradeZone: boolean
-  /** Whether site has FEMA flood zone designation of AE or higher */
-  inFloodZoneAE: boolean
-  /** Wetland fraction (0–1) */
-  wetlandFraction?: number
-}
+import type { InfraAsset } from "@gcir/shared";
 
-export interface SiteFitScore {
-  score: number // 0–1
-  factors: {
-    waterAccess: number
-    infrastructure: number
-    zoning: number
-    incentives: number
-    constraints: number
-  }
-}
+export type SiteFitInput = {
+  totalAcres: number;
+  riverFrontageMi?: number;
+  zoning?: string;          // "M-1","M-2","M-3","A-1",...
+  floodZone?: string;       // "X","AE","VE",...
+  wetlandsAcres?: number;
+  nearbyInfra: InfraAsset[];
+  /** Penalty if the site is in a coastal-permitting zone with long timelines. */
+  coastalPermittingZone?: boolean;
+};
 
-function proximity(distKm: number | undefined, idealKm: number, maxKm: number): number {
-  if (distKm === undefined) return 0.5 // neutral if unknown
-  if (distKm <= idealKm) return 1
-  if (distKm >= maxKm) return 0
-  return 1 - (distKm - idealKm) / (maxKm - idealKm)
-}
+const ZONING_FIT: Record<string, number> = {
+  "M-3": 1.0,
+  "M-2": 0.95,
+  "M-1": 0.85,
+  IL: 0.85,
+  IH: 0.95,
+  IG: 0.9,
+  "A-1": 0.55,
+  "A-2": 0.5,
+  PUD: 0.6,
+  R: 0.2,
+};
 
-export function scoreSiteFit(input: SiteFitInput): SiteFitScore {
-  // 1. Water access (barge & deep water)
-  const waterAccess = proximity(input.distanceToWaterwayKm, 2, 30)
+const FLOOD_PENALTY: Record<string, number> = {
+  X: 0,
+  B: 0.05,
+  C: 0.05,
+  AE: 0.25,
+  AO: 0.3,
+  VE: 0.55,
+};
 
-  // 2. Infrastructure (rail, highway, power, gas)
-  const rail = proximity(input.distanceToRailKm, 5, 50)
-  const highway = proximity(input.distanceToInterstateKm, 5, 40)
-  const power = proximity(input.distanceToTransmissionKm, 2, 20)
-  const gas = proximity(input.distanceToGasPipelineKm, 2, 25)
-  const infrastructure = (rail + highway + power + gas) / 4
+export function scoreSiteFit(input: SiteFitInput): {
+  score: number;
+  components: {
+    infra: number;
+    zoning: number;
+    flood: number;
+    acreage: number;
+    waterway: number;
+  };
+} {
+  const infra = clamp01(
+    Math.min(
+      1,
+      input.nearbyInfra.reduce((s, i) => s + (i.weight ?? 1), 0) / 4,
+    ),
+  );
 
-  // 3. Zoning
-  const zoning = input.inIndustrialZone ? 1 : 0.3
+  const z = (input.zoning ?? "").toUpperCase();
+  const zoning = ZONING_FIT[z] ?? 0.4;
 
-  // 4. Incentive programmes
-  const incentives =
-    (input.inOpportunityZone ? 0.5 : 0) + (input.inForeignTradeZone ? 0.5 : 0)
+  const fz = (input.floodZone ?? "X").toUpperCase();
+  const floodHit = FLOOD_PENALTY[fz] ?? 0.1;
+  const wetlandsHit = Math.min(0.4, (input.wetlandsAcres ?? 0) * 0.05);
+  const flood = clamp01(1 - floodHit - wetlandsHit);
 
-  // 5. Constraints (negative factors)
-  const floodPenalty = input.inFloodZoneAE ? 0.3 : 0
-  const wetlandPenalty = (input.wetlandFraction ?? 0) * 0.5
-  const constraints = Math.max(0, 1 - floodPenalty - wetlandPenalty)
+  const acreage = clamp01(Math.log10(Math.max(1, input.totalAcres)) / 3.5); // 1..3500ac
+  const waterway = clamp01((input.riverFrontageMi ?? 0) / 1.5);
 
-  const score =
-    waterAccess * 0.25 +
-    infrastructure * 0.3 +
+  const composite =
+    infra * 0.35 +
     zoning * 0.2 +
-    incentives * 0.1 +
-    constraints * 0.15
+    flood * 0.2 +
+    acreage * 0.15 +
+    waterway * 0.1 -
+    (input.coastalPermittingZone ? 0.1 : 0);
 
   return {
-    score: Math.round(score * 1000) / 1000,
-    factors: {
-      waterAccess: Math.round(waterAccess * 1000) / 1000,
-      infrastructure: Math.round(infrastructure * 1000) / 1000,
-      zoning: Math.round(zoning * 1000) / 1000,
-      incentives: Math.round(incentives * 1000) / 1000,
-      constraints: Math.round(constraints * 1000) / 1000,
-    },
-  }
+    score: Math.round(clamp01(composite) * 100) / 10, // 0..10
+    components: { infra, zoning, flood, acreage, waterway },
+  };
+}
+
+function clamp01(x: number): number {
+  return Number.isNaN(x) ? 0 : Math.max(0, Math.min(1, x));
 }

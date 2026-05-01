@@ -1,8 +1,5 @@
 {
-  "extends": "@gcir/tsconfig/base",
-  "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src"
-  },
-  "include": ["src"]
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": "./src", "outDir": "./dist", "noEmit": true },
+  "include": ["src/**/*"]
 }
