@@ -1,55 +1,73 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { mockFetchOnce } from "./helpers/mockFetch";
+import { fakeContext } from "./helpers/adapterContext";
 import { tceqAdapter } from "../src/tceq";
-import { makeContext } from "./helpers/adapterContext";
-
-const FIXTURE = readFileSync(
-  join(__dirname, "fixtures/tceq-pending.html"),
-  "utf-8"
-);
 
 describe("tceq adapter", () => {
-  beforeEach(() => {
-    vi.stubGlobal("fetch", async () => new Response(FIXTURE, { status: 200 }));
-  });
+  afterEach(() => vi.unstubAllGlobals());
 
-  it("parses NSR permit records from HTML table", async () => {
-    const ctx = makeContext();
-    const result = await tceqAdapter.fetch(ctx);
-    expect(result.records.length).toBeGreaterThan(0);
-  });
-
-  it("filters out alphabetical-index rows", async () => {
-    const ctx = makeContext();
-    const result = await tceqAdapter.fetch(ctx);
-    result.records.forEach((r) => {
-      // Single-letter rows should not be included
-      expect(r.title.length).toBeGreaterThan(2);
-    });
-  });
-
-  it("assigns permit.air.NSR predicate for NSR feed", async () => {
-    const ctx = makeContext();
-    const result = await tceqAdapter.fetch(ctx);
-    result.records.forEach((r) => {
-      expect(r.predicate).toMatch(/^permit\.air\./);
-    });
-  });
-
-  it("uses permit number as sourceId key", async () => {
-    const ctx = makeContext();
-    const result = await tceqAdapter.fetch(ctx);
-    const psdtx = result.records.find((r) =>
-      r.sourceId.includes("PSDTX1798")
+  it("parses TCEQ pending HTML into ENVIRONMENTAL_PERMIT signals", async () => {
+    // The updated adapter fetches TWO URLs (NSR + Title V); stub both calls
+    // with the same fixture.
+    const { readFile } = await import("node:fs/promises");
+    const { resolve } = await import("node:path");
+    const fixture = await readFile(
+      resolve(__dirname, "fixtures", "tceq-pending.html"),
+      "utf8",
     );
-    expect(psdtx).toBeDefined();
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(fixture, { status: 200, headers: { "content-type": "text/html" } }),
+    ));
+
+    const result = await tceqAdapter.run(fakeContext("tceq"));
+    expect(result.records.length).toBeGreaterThan(0);
+    const r = result.records[0];
+    expect(r.family).toBe("ENVIRONMENTAL_PERMIT");
+    expect(r.predicate).toBe("permit.tceq.air");
+    expect(r.confidence).toBeGreaterThan(0.5);
   });
 
-  it("returns empty records on fetch error", async () => {
-    vi.stubGlobal("fetch", async () => { throw new Error("ENOTFOUND"); });
-    const ctx = makeContext();
-    const result = await tceqAdapter.fetch(ctx);
-    expect(result.records).toEqual([]);
+  it("filters out alphabetical-index anchor rows and Back-to-top rows", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const { resolve } = await import("node:path");
+    const fixture = await readFile(
+      resolve(__dirname, "fixtures", "tceq-pending.html"),
+      "utf8",
+    );
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(fixture, { status: 200, headers: { "content-type": "text/html" } }),
+    ));
+
+    const result = await tceqAdapter.run(fakeContext("tceq"));
+    // No externalId should be "tceq:NSR:A" or contain "back to top"
+    for (const r of result.records) {
+      expect(r.subjectLabel.toLowerCase()).not.toMatch(/^back\s+to\s+top/);
+      expect(r.externalId).not.toMatch(/:A$/);
+    }
+  });
+
+  it("extracts applicant and permit number from confirmed column layout", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const { resolve } = await import("node:path");
+    const fixture = await readFile(
+      resolve(__dirname, "fixtures", "tceq-pending.html"),
+      "utf8",
+    );
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(fixture, { status: 200, headers: { "content-type": "text/html" } }),
+    ));
+
+    const result = await tceqAdapter.run(fakeContext("tceq"));
+    const acacia = result.records.find((r) =>
+      r.subjectLabel.toLowerCase().includes("acacia"),
+    );
+    expect(acacia).toBeDefined();
+    expect(acacia!.externalId).toMatch(/3860/);
+  });
+
+  it("has slug tceq and implemented:true", () => {
+    expect(tceqAdapter.slug).toBe("tceq");
+    expect(tceqAdapter.implemented).toBe(true);
+    expect(tceqAdapter.family).toBe("ENVIRONMENTAL_PERMIT");
   });
 });

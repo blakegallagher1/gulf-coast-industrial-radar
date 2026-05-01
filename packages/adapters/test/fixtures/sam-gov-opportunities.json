@@ -1,31 +1,44 @@
 {
-  "totalRecords": 2,
+  "totalRecords": 3,
+  "limit": 50,
+  "offset": 0,
   "opportunitiesData": [
     {
-      "noticeId": "NOTICE-2024-001",
-      "title": "Gulf Coast Port Dredging Services",
+      "noticeId": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+      "title": "EPC Services for LNG Liquefaction Train 4 — Cameron Parish LA",
+      "solicitationNumber": "DOE-LNG-2026-001",
+      "postedDate": "2026-04-10",
       "type": "Solicitation",
-      "postedDate": "04/10/2024",
-      "responseDeadLine": "05/10/2024",
-      "naicsCode": "237990",
-      "uiLink": "https://sam.gov/opp/abc123/view",
+      "naicsCode": "237120",
       "placeOfPerformance": {
-        "state": { "code": "LA" },
-        "city": { "name": "Lake Charles" }
-      }
+        "streetAddress": "1 LNG Way",
+        "city": { "code": "22370", "name": "Hackberry" },
+        "state": { "code": "LA", "name": "Louisiana" },
+        "zip": "70645",
+        "country": { "code": "USA" }
+      },
+      "fullParentPathName": "DEPARTMENT OF ENERGY.NATIONAL ENERGY TECHNOLOGY LABORATORY",
+      "active": "Yes",
+      "description": "Seeking EPC contractor for construction of LNG Train 4 at Cameron Parish facility. Estimated capex $3.2B. FEED complete.",
+      "uiLink": "https://sam.gov/opp/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4/view"
     },
     {
-      "noticeId": "NOTICE-2024-002",
-      "title": "Refinery Inspection Services Contract Award",
+      "noticeId": "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5",
+      "title": "Environmental Services BPA — Ascension and St. James Parishes",
+      "solicitationNumber": "EPA-R06-2026-0042",
+      "postedDate": "2026-04-08",
       "type": "Award Notice",
-      "postedDate": "04/12/2024",
-      "responseDeadLine": null,
-      "naicsCode": "541330",
-      "uiLink": "https://sam.gov/opp/def456/view",
+      "naicsCode": "541620",
       "placeOfPerformance": {
-        "state": { "code": "TX" },
-        "city": { "name": "Beaumont" }
-      }
+        "city": { "code": "22220", "name": "Geismar" },
+        "state": { "code": "LA", "name": "Louisiana" },
+        "zip": "70734",
+        "country": { "code": "USA" }
+      },
+      "fullParentPathName": "ENVIRONMENTAL PROTECTION AGENCY.REGION 06",
+      "active": "Yes",
+      "uiLink": "https://sam.gov/opp/b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5/view"
     }
-  ]
+  ],
+  "links": []
 }

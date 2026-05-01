@@ -1,23 +1,46 @@
 {
+  "objectIdFieldName": "OBJECTID",
+  "geometryType": "esriGeometryPolygon",
+  "spatialReference": { "wkid": 4326 },
+  "fields": [
+    { "name": "ASMT", "type": "esriFieldTypeString" },
+    { "name": "OWNER", "type": "esriFieldTypeString" },
+    { "name": "ACRES", "type": "esriFieldTypeDouble" },
+    { "name": "ADDRESS", "type": "esriFieldTypeString" },
+    { "name": "ZONING", "type": "esriFieldTypeString" },
+    { "name": "LAST_EDIT", "type": "esriFieldTypeDate" },
+    { "name": "SALE_DATE", "type": "esriFieldTypeDate" },
+    { "name": "SALE_PRICE", "type": "esriFieldTypeDouble" }
+  ],
   "features": [
     {
-      "properties": {
-        "ASMT": "1234567890",
-        "OWNER": "EXXON MOBIL CORPORATION",
-        "ACRES": 45.7,
-        "ZONING": "M1",
-        "SALE_DATE": "06/01/2023",
-        "SALE_PRICE": 3500000
+      "attributes": {
+        "ASMT": "01-0055-0001",
+        "OWNER": "PORT ALLEN INDUSTRIAL CAPITAL LLC",
+        "ACRES": 88.3,
+        "ADDRESS": "3100 N RIVER RD, PORT ALLEN LA 70767",
+        "ZONING": "HI",
+        "LAST_EDIT": 1743465600000,
+        "SALE_DATE": 1743465600000,
+        "SALE_PRICE": 1950000
+      },
+      "geometry": {
+        "rings": [[[-91.20, 30.45], [-91.19, 30.45], [-91.19, 30.44], [-91.20, 30.44], [-91.20, 30.45]]]
       }
     },
     {
-      "properties": {
-        "ASMT": "9876543210",
-        "OWNER": "TURNER INDUSTRIES GROUP LLC",
-        "ACRES": 8.1,
-        "ZONING": "M2",
-        "SALE_DATE": "",
-        "SALE_PRICE": 0
+      "attributes": {
+        "ASMT": "01-0055-0002",
+        "OWNER": "IBERVILLE RIVER HOLDINGS LLC",
+        "ACRES": 122.1,
+        "ADDRESS": "0 HWY 1, PORT ALLEN LA 70767",
+        "ZONING": "HI",
+        "LAST_EDIT": 1743552000000,
+        "SALE_DATE": null,
+        "SALE_PRICE": null
+      },
+      "geometry": {
+        "rings": [[[-91.21, 30.45], [-91.20, 30.45], [-91.20, 30.44], [-91.21, 30.44], [-91.21, 30.45]]]
       }
     }
   ]

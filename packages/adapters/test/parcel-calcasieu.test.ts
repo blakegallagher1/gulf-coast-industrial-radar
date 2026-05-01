@@ -1,55 +1,45 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { readFileSync } from "fs";
-import { join } from "path";
-import { parcelCalcasieuAdapter } from "../src/parcel-calcasieu";
-import { makeContext } from "./helpers/adapterContext";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { mockFetchOnce } from "./helpers/mockFetch";
+import { fakeContext } from "./helpers/adapterContext";
+import { calcasieuParcelAdapter } from "../src/parcel-calcasieu";
 
-const FIXTURE = readFileSync(
-  join(__dirname, "fixtures/calcasieu-parcels.json"),
-  "utf-8"
-);
+describe("parcel-calcasieu adapter (calcasieu-assessor)", () => {
+  afterEach(() => vi.unstubAllGlobals());
 
-describe("parcel-calcasieu adapter", () => {
-  beforeEach(() => {
-    vi.stubGlobal("fetch", async () => new Response(FIXTURE, { status: 200 }));
+  it("parses ArcGIS JSON into LAND_CONTROL signals", async () => {
+    mockFetchOnce("calcasieu-parcels.json", "application/json");
+    const result = await calcasieuParcelAdapter.run(fakeContext("calcasieu-assessor"));
+    expect(result.records.length).toBeGreaterThan(0);
+    const r = result.records[0];
+    expect(r.family).toBe("LAND_CONTROL");
+    expect(r.predicate).toMatch(/^land\./);
+    expect(r.confidence).toBeGreaterThan(0.5);
   });
 
-  it("parses parcel features from ArcGIS JSON", async () => {
-    const ctx = makeContext({ parish: "Calcasieu" });
-    const result = await parcelCalcasieuAdapter.fetch(ctx);
-    expect(result.records.length).toBe(2);
+  it("uses PARCEL_ID field (note: field name unconfirmed per research artifact)", async () => {
+    mockFetchOnce("calcasieu-parcels.json", "application/json");
+    const result = await calcasieuParcelAdapter.run(fakeContext("calcasieu-assessor"));
+    expect(result.records[0].externalId).toMatch(/^calcasieu:/);
+    expect(result.records[0].payload.parcelNumber).toBe("C-0041-0012-0003");
   });
 
-  it("assigns parcel.sale predicate for sold parcels", async () => {
-    const ctx = makeContext({ parish: "Calcasieu" });
-    const result = await parcelCalcasieuAdapter.fetch(ctx);
-    const sold = result.records.find((r) =>
-      r.sourceId.includes("CAL-10001")
-    );
-    expect(sold?.predicate).toBe("parcel.sale");
+  it("emits land.transfer when SALE_PRICE present", async () => {
+    mockFetchOnce("calcasieu-parcels.json", "application/json");
+    const result = await calcasieuParcelAdapter.run(fakeContext("calcasieu-assessor"));
+    const sale = result.records.find((r) => r.payload.salePriceUsd != null);
+    expect(sale!.predicate).toBe("land.transfer");
   });
 
-  it("assigns parcel.rezone predicate for parcels without sale date", async () => {
-    const ctx = makeContext({ parish: "Calcasieu" });
-    const result = await parcelCalcasieuAdapter.fetch(ctx);
-    const rezone = result.records.find((r) =>
-      r.sourceId.includes("CAL-10002")
-    );
-    expect(rezone?.predicate).toBe("parcel.rezone");
+  it("emits land.parcel.update when no SALE_PRICE", async () => {
+    mockFetchOnce("calcasieu-parcels.json", "application/json");
+    const result = await calcasieuParcelAdapter.run(fakeContext("calcasieu-assessor"));
+    const update = result.records.find((r) => r.payload.salePriceUsd == null);
+    expect(update!.predicate).toBe("land.parcel.update");
   });
 
-  it("includes parish in location", async () => {
-    const ctx = makeContext({ parish: "Calcasieu" });
-    const result = await parcelCalcasieuAdapter.fetch(ctx);
-    result.records.forEach((r) => {
-      expect(r.location?.parish).toBe("Calcasieu");
-    });
-  });
-
-  it("returns empty on fetch error", async () => {
-    vi.stubGlobal("fetch", async () => { throw new Error("connection reset"); });
-    const ctx = makeContext();
-    const result = await parcelCalcasieuAdapter.fetch(ctx);
-    expect(result.records).toEqual([]);
+  it("has slug calcasieu-assessor and implemented:true", () => {
+    expect(calcasieuParcelAdapter.slug).toBe("calcasieu-assessor");
+    expect(calcasieuParcelAdapter.implemented).toBe(true);
+    expect(calcasieuParcelAdapter.family).toBe("LAND_CONTROL");
   });
 });

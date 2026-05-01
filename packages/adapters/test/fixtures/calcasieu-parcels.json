@@ -1,23 +1,43 @@
 {
+  "objectIdFieldName": "OBJECTID",
+  "geometryType": "esriGeometryPolygon",
+  "spatialReference": { "wkid": 4326 },
+  "fields": [
+    { "name": "PARCEL_ID", "type": "esriFieldTypeString" },
+    { "name": "OWNER", "type": "esriFieldTypeString" },
+    { "name": "ACRES", "type": "esriFieldTypeDouble" },
+    { "name": "ZONING", "type": "esriFieldTypeString" },
+    { "name": "LAST_UPD", "type": "esriFieldTypeDate" },
+    { "name": "SALE_DATE", "type": "esriFieldTypeDate" },
+    { "name": "SALE_PRICE", "type": "esriFieldTypeDouble" }
+  ],
   "features": [
     {
       "attributes": {
-        "PARCEL_ID": "CAL-10001",
-        "OWNER": "SOUTHWEST LOUISIANA ENERGY LLC",
-        "ACRES": 25.0,
-        "ZONING": "HI",
-        "SALE_DATE": "03/22/2024",
-        "SALE_PRICE": 1200000
+        "PARCEL_ID": "C-0041-0012-0003",
+        "OWNER": "LAKE CHARLES LNG TERMINAL LLC",
+        "ACRES": 410.5,
+        "ZONING": "HEAVY INDUSTRIAL",
+        "LAST_UPD": 1743465600000,
+        "SALE_DATE": 1743465600000,
+        "SALE_PRICE": 7200000
+      },
+      "geometry": {
+        "rings": [[[-93.28, 30.17], [-93.27, 30.17], [-93.27, 30.16], [-93.28, 30.16], [-93.28, 30.17]]]
       }
     },
     {
       "attributes": {
-        "PARCEL_ID": "CAL-10002",
-        "OWNER": "LAKE CHARLES PORT AUTHORITY",
-        "ACRES": 150.3,
-        "ZONING": "PORT",
+        "PARCEL_ID": "C-0041-0012-0004",
+        "OWNER": "SABINE PASS LAND HOLDINGS LLC",
+        "ACRES": 218.0,
+        "ZONING": "HEAVY INDUSTRIAL",
+        "LAST_UPD": 1743552000000,
         "SALE_DATE": null,
-        "SALE_PRICE": 0
+        "SALE_PRICE": null
+      },
+      "geometry": {
+        "rings": [[[-93.29, 30.17], [-93.28, 30.17], [-93.28, 30.16], [-93.29, 30.16], [-93.29, 30.17]]]
       }
     }
   ]

@@ -1,23 +1,46 @@
 {
+  "objectIdFieldName": "OBJECTID",
+  "geometryType": "esriGeometryPolygon",
+  "spatialReference": { "wkid": 4326 },
+  "fields": [
+    { "name": "PARCEL_ID", "type": "esriFieldTypeString" },
+    { "name": "OWNER", "type": "esriFieldTypeString" },
+    { "name": "ACRES", "type": "esriFieldTypeDouble" },
+    { "name": "ADDRESS", "type": "esriFieldTypeString" },
+    { "name": "ZONING", "type": "esriFieldTypeString" },
+    { "name": "LAST_UPD", "type": "esriFieldTypeDate" },
+    { "name": "SALE_DATE", "type": "esriFieldTypeDate" },
+    { "name": "SALE_PRICE", "type": "esriFieldTypeDouble" }
+  ],
   "features": [
     {
       "attributes": {
-        "PARCEL_ID": "000-00001",
-        "OWNER": "ACME INDUSTRIES LLC",
-        "ACRES": 12.5,
+        "PARCEL_ID": "0140002200",
+        "OWNER": "CRESCENT INDUSTRIAL HOLDINGS I LLC",
+        "ACRES": 245.7,
+        "ADDRESS": "0 RIVER RD, DONALDSONVILLE LA 70346",
         "ZONING": "M2",
-        "SALE_DATE": "01/15/2024",
-        "SALE_PRICE": 450000
+        "LAST_UPD": 1743465600000,
+        "SALE_DATE": 1743465600000,
+        "SALE_PRICE": 4800000
+      },
+      "geometry": {
+        "rings": [[[-90.99, 30.07], [-90.98, 30.07], [-90.98, 30.06], [-90.99, 30.06], [-90.99, 30.07]]]
       }
     },
     {
       "attributes": {
-        "PARCEL_ID": "000-00002",
-        "OWNER": "GULF COAST PROPERTIES",
-        "ACRES": 5.2,
-        "ZONING": "C3",
-        "SALE_DATE": null,
-        "SALE_PRICE": 0
+        "PARCEL_ID": "0140002201",
+        "OWNER": "CRESCENT INDUSTRIAL HOLDINGS II LLC",
+        "ACRES": 312.4,
+        "ADDRESS": "0 RIVER RD, DONALDSONVILLE LA 70346",
+        "ZONING": "M2",
+        "LAST_UPD": 1743552000000,
+        "SALE_DATE": 1743552000000,
+        "SALE_PRICE": 6100000
+      },
+      "geometry": {
+        "rings": [[[-90.98, 30.07], [-90.97, 30.07], [-90.97, 30.06], [-90.98, 30.06], [-90.98, 30.07]]]
       }
     }
   ]

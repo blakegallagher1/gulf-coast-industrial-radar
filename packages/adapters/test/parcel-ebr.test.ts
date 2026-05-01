@@ -1,51 +1,45 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { readFileSync } from "fs";
-import { join } from "path";
-import { parcelEbrAdapter } from "../src/parcel-ebr";
-import { makeContext } from "./helpers/adapterContext";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { mockFetchOnce } from "./helpers/mockFetch";
+import { fakeContext } from "./helpers/adapterContext";
+import { ebrParcelAdapter } from "../src/parcel-ebr";
 
-const FIXTURE = readFileSync(
-  join(__dirname, "fixtures/ebr-parcels.json"),
-  "utf-8"
-);
+describe("parcel-ebr adapter (ebr-gis)", () => {
+  afterEach(() => vi.unstubAllGlobals());
 
-describe("parcel-ebr adapter", () => {
-  beforeEach(() => {
-    vi.stubGlobal("fetch", async () => new Response(FIXTURE, { status: 200 }));
+  it("parses ArcGIS JSON into LAND_CONTROL signals", async () => {
+    mockFetchOnce("ebr-parcels.json", "application/json");
+    const result = await ebrParcelAdapter.run(fakeContext("ebr-gis"));
+    expect(result.records.length).toBeGreaterThan(0);
+    const r = result.records[0];
+    expect(r.family).toBe("LAND_CONTROL");
+    expect(r.predicate).toMatch(/^land\./);
+    expect(r.confidence).toBeGreaterThan(0.5);
   });
 
-  it("parses parcel features from EBR GeoJSON", async () => {
-    const ctx = makeContext({ parish: "East Baton Rouge" });
-    const result = await parcelEbrAdapter.fetch(ctx);
-    expect(result.records.length).toBe(2);
+  it("uses ASMT field as parcel identifier (research-confirmed field name)", async () => {
+    mockFetchOnce("ebr-parcels.json", "application/json");
+    const result = await ebrParcelAdapter.run(fakeContext("ebr-gis"));
+    expect(result.records[0].externalId).toMatch(/^ebr:/);
+    expect(result.records[0].payload.parcelNumber).toBe("01-0055-0001");
   });
 
-  it("uses ASMT as primary identifier", async () => {
-    const ctx = makeContext({ parish: "East Baton Rouge" });
-    const result = await parcelEbrAdapter.fetch(ctx);
-    expect(result.records[0].sourceId).toBe("parcel-ebr:1234567890");
+  it("emits land.transfer when SALE_PRICE present", async () => {
+    mockFetchOnce("ebr-parcels.json", "application/json");
+    const result = await ebrParcelAdapter.run(fakeContext("ebr-gis"));
+    const sale = result.records.find((r) => r.payload.salePriceUsd != null);
+    expect(sale!.predicate).toBe("land.transfer");
   });
 
-  it("assigns parcel.sale when SALE_DATE present", async () => {
-    const ctx = makeContext({ parish: "East Baton Rouge" });
-    const result = await parcelEbrAdapter.fetch(ctx);
-    const sold = result.records.find((r) => r.sourceId.includes("1234567890"));
-    expect(sold?.predicate).toBe("parcel.sale");
+  it("emits land.parcel.update when no SALE_PRICE", async () => {
+    mockFetchOnce("ebr-parcels.json", "application/json");
+    const result = await ebrParcelAdapter.run(fakeContext("ebr-gis"));
+    const update = result.records.find((r) => r.payload.salePriceUsd == null);
+    expect(update!.predicate).toBe("land.parcel.update");
   });
 
-  it("assigns parcel.rezone when SALE_DATE absent or empty", async () => {
-    const ctx = makeContext({ parish: "East Baton Rouge" });
-    const result = await parcelEbrAdapter.fetch(ctx);
-    const rezone = result.records.find((r) =>
-      r.sourceId.includes("9876543210")
-    );
-    expect(rezone?.predicate).toBe("parcel.rezone");
-  });
-
-  it("returns empty records on fetch error", async () => {
-    vi.stubGlobal("fetch", async () => { throw new Error("ECONNREFUSED"); });
-    const ctx = makeContext();
-    const result = await parcelEbrAdapter.fetch(ctx);
-    expect(result.records).toEqual([]);
+  it("has slug ebr-gis and implemented:true", () => {
+    expect(ebrParcelAdapter.slug).toBe("ebr-gis");
+    expect(ebrParcelAdapter.implemented).toBe(true);
+    expect(ebrParcelAdapter.family).toBe("LAND_CONTROL");
   });
 });

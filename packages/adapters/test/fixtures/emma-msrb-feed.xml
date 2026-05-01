@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
-    <title>EMMA New Issues</title>
+    <title>EMMA Recent Disclosures — Louisiana</title>
     <link>https://emma.msrb.org</link>
-    <description>New municipal securities issues</description>
+    <description>Recent continuing disclosures for Louisiana issuers</description>
     <item>
-      <title>State of Louisiana Revenue Bond Series 2024A</title>
-      <link>https://emma.msrb.org/IssueView/Details/ER1234567</link>
-      <description>$150,000,000 State of Louisiana Revenue Bond</description>
-      <pubDate>Mon, 15 Apr 2024 10:00:00 GMT</pubDate>
-      <guid>ER1234567</guid>
+      <title>Ascension Parish Industrial Development Board — IDB Revenue Bonds Series 2026A (Project Aurora Steel)</title>
+      <link>https://emma.msrb.org/DisclosureView/Details/123456</link>
+      <description><![CDATA[Industrial Development Board Revenue Bonds — private activity bond for Aurora Steel Donaldsonville LLC. Notional $450M. IDB authorization filed 2026-04-12.]]></description>
+      <guid>https://emma.msrb.org/DisclosureView/Details/123456</guid>
+      <pubDate>Tue, 14 Apr 2026 09:00:00 GMT</pubDate>
     </item>
     <item>
-      <title>East Baton Rouge Parish School Board Refunding Bond 2024</title>
-      <link>https://emma.msrb.org/IssueView/Details/ER7654321</link>
-      <description>$45,000,000 Refunding bond for prior obligations</description>
-      <pubDate>Tue, 16 Apr 2024 14:30:00 GMT</pubDate>
-      <guid>ER7654321</guid>
+      <title>St. James Parish Industrial Development Board — IDB Revenue Bond (Project Crescent) continuing disclosure</title>
+      <link>https://emma.msrb.org/DisclosureView/Details/123499</link>
+      <description><![CDATA[Industrial revenue bond continuing disclosure. Issuer: St. James Parish IDB. Project finance for Crescent Industrial Holdings consortium, St. James Parish, LA.]]></description>
+      <guid>https://emma.msrb.org/DisclosureView/Details/123499</guid>
+      <pubDate>Wed, 16 Apr 2026 11:30:00 GMT</pubDate>
     </item>
   </channel>
 </rss>

@@ -1,56 +1,61 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
+import { mockFetchOnce } from "./helpers/mockFetch";
+import { fakeContext } from "./helpers/adapterContext";
 import { samGovAdapter } from "../src/sam-gov";
-import { makeContext } from "./helpers/adapterContext";
-
-const FIXTURE = readFileSync(
-  join(__dirname, "fixtures/sam-gov-opportunities.json"),
-  "utf-8"
-);
 
 describe("sam-gov adapter", () => {
   beforeEach(() => {
-    vi.stubGlobal("fetch", async () => new Response(FIXTURE, { status: 200 }));
+    process.env.SAM_GOV_API_KEY = "test-key-0000";
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.SAM_GOV_API_KEY;
   });
 
-  it("parses opportunity records from SAM.gov response", async () => {
-    const ctx = makeContext();
-    const result = await samGovAdapter.fetch(ctx);
-    expect(result.records.length).toBe(2);
+  it("parses opportunitiesData into PROCUREMENT signals", async () => {
+    mockFetchOnce("sam-gov-opportunities.json", "application/json");
+    const result = await samGovAdapter.run(fakeContext("sam-gov"));
+    expect(result.records.length).toBeGreaterThan(0);
+    const r = result.records[0];
+    expect(r.family).toBe("PROCUREMENT");
+    expect(r.predicate).toMatch(/^procurement\.federal\./);
+    expect(r.confidence).toBeGreaterThan(0.5);
   });
 
-  it("assigns contract.opportunity predicate for solicitations", async () => {
-    const ctx = makeContext();
-    const result = await samGovAdapter.fetch(ctx);
-    const sol = result.records.find((r) =>
-      r.sourceId.includes("NOTICE-2024-001")
+  it("maps Solicitation type to procurement.federal.solicitation", async () => {
+    mockFetchOnce("sam-gov-opportunities.json", "application/json");
+    const result = await samGovAdapter.run(fakeContext("sam-gov"));
+    const solicit = result.records.find((r) =>
+      r.payload.type === "Solicitation",
     );
-    expect(sol?.predicate).toBe("contract.opportunity");
+    expect(solicit!.predicate).toBe("procurement.federal.solicitation");
   });
 
-  it("assigns contract.award predicate for award notices", async () => {
-    const ctx = makeContext();
-    const result = await samGovAdapter.fetch(ctx);
+  it("maps Award Notice type to procurement.federal.award", async () => {
+    mockFetchOnce("sam-gov-opportunities.json", "application/json");
+    const result = await samGovAdapter.run(fakeContext("sam-gov"));
     const award = result.records.find((r) =>
-      r.sourceId.includes("NOTICE-2024-002")
+      (r.payload.type as string).toLowerCase().includes("award"),
     );
-    expect(award?.predicate).toBe("contract.award");
+    expect(award!.predicate).toBe("procurement.federal.award");
   });
 
-  it("includes state and city in location", async () => {
-    const ctx = makeContext();
-    const result = await samGovAdapter.fetch(ctx);
-    const la = result.records.find((r) =>
-      r.location?.state === "LA"
-    );
-    expect(la?.location?.city).toBe("Lake Charles");
+  it("externalId is noticeId", async () => {
+    mockFetchOnce("sam-gov-opportunities.json", "application/json");
+    const result = await samGovAdapter.run(fakeContext("sam-gov"));
+    expect(result.records[0].externalId).toBe("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4");
   });
 
-  it("returns empty records on fetch error", async () => {
-    vi.stubGlobal("fetch", async () => { throw new Error("503"); });
-    const ctx = makeContext();
-    const result = await samGovAdapter.fetch(ctx);
-    expect(result.records).toEqual([]);
+  it("returns empty records and note when API key missing", async () => {
+    delete process.env.SAM_GOV_API_KEY;
+    const result = await samGovAdapter.run(fakeContext("sam-gov"));
+    expect(result.records.length).toBe(0);
+    expect(result.notes).toMatch(/SAM_GOV_API_KEY not set/);
+  });
+
+  it("has slug sam-gov and implemented:true", () => {
+    expect(samGovAdapter.slug).toBe("sam-gov");
+    expect(samGovAdapter.implemented).toBe(true);
+    expect(samGovAdapter.family).toBe("PROCUREMENT");
   });
 });

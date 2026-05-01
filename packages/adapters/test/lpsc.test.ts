@@ -1,51 +1,45 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { mockFetchOnce } from "./helpers/mockFetch";
+import { fakeContext } from "./helpers/adapterContext";
 import { lpscAdapter } from "../src/lpsc";
-import { makeContext } from "./helpers/adapterContext";
-
-const FIXTURE = readFileSync(
-  join(__dirname, "fixtures/lpsc-dockets.html"),
-  "utf-8"
-);
 
 describe("lpsc adapter", () => {
-  beforeEach(() => {
-    vi.stubGlobal("fetch", async () => new Response(FIXTURE, { status: 200 }));
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("parses docket HTML into UTILITY_POWER signals", async () => {
+    mockFetchOnce("lpsc-dockets.html", "text/html");
+    const result = await lpscAdapter.run(fakeContext("lpsc"));
+    expect(result.records.length).toBeGreaterThan(0);
+    const r = result.records[0];
+    expect(r.family).toBe("UTILITY_POWER");
+    expect(r.predicate).toMatch(/^utility\./);
+    expect(r.confidence).toBeGreaterThan(0.5);
   });
 
-  it("parses U-prefix utility dockets", async () => {
-    const ctx = makeContext();
-    const result = await lpscAdapter.fetch(ctx);
-    const utility = result.records.find((r) => r.sourceId.includes("U-34567"));
-    expect(utility).toBeDefined();
+  it("assigns utility.interconnection for interconnection docket", async () => {
+    mockFetchOnce("lpsc-dockets.html", "text/html");
+    const result = await lpscAdapter.run(fakeContext("lpsc"));
+    const interconnect = result.records.find((r) => r.payload.docketNo === "U-37812");
+    expect(interconnect).toBeDefined();
+    expect(interconnect!.predicate).toBe("utility.interconnection");
   });
 
-  it("parses T-prefix transport dockets", async () => {
-    const ctx = makeContext();
-    const result = await lpscAdapter.fetch(ctx);
-    const transport = result.records.find((r) => r.sourceId.includes("T-12345"));
+  it("externalId uses lpsc: prefix and docket number", async () => {
+    mockFetchOnce("lpsc-dockets.html", "text/html");
+    const result = await lpscAdapter.run(fakeContext("lpsc"));
+    expect(result.records[0].externalId).toMatch(/^lpsc:/);
+  });
+
+  it("parses T- prefixed transport dockets", async () => {
+    mockFetchOnce("lpsc-dockets.html", "text/html");
+    const result = await lpscAdapter.run(fakeContext("lpsc"));
+    const transport = result.records.find((r) => (r.payload.docketNo as string).startsWith("T-"));
     expect(transport).toBeDefined();
   });
 
-  it("classifies rate filings correctly", async () => {
-    const ctx = makeContext();
-    const result = await lpscAdapter.fetch(ctx);
-    const rate = result.records.find((r) => r.sourceId.includes("U-34567"));
-    expect(rate?.predicate).toBe("regulatory.rate.filing");
-  });
-
-  it("classifies CPCN certificate applications correctly", async () => {
-    const ctx = makeContext();
-    const result = await lpscAdapter.fetch(ctx);
-    const cert = result.records.find((r) => r.sourceId.includes("U-34568"));
-    expect(cert?.predicate).toBe("regulatory.cert.filing");
-  });
-
-  it("returns empty records on fetch error", async () => {
-    vi.stubGlobal("fetch", async () => { throw new Error("timeout"); });
-    const ctx = makeContext();
-    const result = await lpscAdapter.fetch(ctx);
-    expect(result.records).toEqual([]);
+  it("has slug lpsc and implemented:true", () => {
+    expect(lpscAdapter.slug).toBe("lpsc");
+    expect(lpscAdapter.implemented).toBe(true);
+    expect(lpscAdapter.family).toBe("UTILITY_POWER");
   });
 });

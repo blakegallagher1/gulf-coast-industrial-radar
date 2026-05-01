@@ -1,28 +1,25 @@
 {
-  "d": [
+  "TotalCount": 2,
+  "Results": [
     {
-      "DocumentId": "DOC-2024-001",
-      "FacilityName": "ExxonMobil Baton Rouge Complex",
-      "Parish": "East Baton Rouge",
-      "ActivityType": "Air",
-      "PermitNumber": "LA-0001234-V",
-      "UrlPath": "/app/Activity/Details/12345"
+      "DocumentId": "8901234",
+      "Title": "LPDES Permit Renewal — Nucor Steel Louisiana LLC · Convent Facility",
+      "DocumentDate": "2026-04-15",
+      "FacilityName": "Nucor Steel Louisiana LLC",
+      "Parish": "St. James",
+      "ActivityType": "WQ",
+      "PermitNumber": "LA0031518",
+      "UrlPath": "/app/doc/8901234"
     },
     {
-      "DocumentId": "DOC-2024-002",
-      "FacilityName": "Westlake Chlor-Alkali Partners",
-      "Parish": "Calcasieu",
-      "ActivityType": "Water",
-      "PermitNumber": "LA-W-0005678",
-      "UrlPath": "/app/Activity/Details/67890"
-    },
-    {
-      "DocumentId": "DOC-2024-003",
-      "FacilityName": "Dupont Laplace Plant",
-      "Parish": "St. John the Baptist",
-      "ActivityType": "SolidWaste",
-      "PermitNumber": "LA-SW-0009012",
-      "UrlPath": "/app/Activity/Details/90120"
+      "DocumentId": "8901235",
+      "Title": "Air Permit NOI — Formosa Plastics Corp Texas · St. James Parish Expansion",
+      "DocumentDate": "2026-04-10",
+      "FacilityName": "Formosa Plastics Corp Texas",
+      "Parish": "St. James",
+      "ActivityType": "AQ",
+      "PermitNumber": "2680-V",
+      "UrlPath": "/app/doc/8901235"
     }
   ]
 }

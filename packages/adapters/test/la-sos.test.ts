@@ -1,46 +1,63 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { mockFetchOnce } from "./helpers/mockFetch";
+import { fakeContext } from "./helpers/adapterContext";
 import { laSosAdapter } from "../src/la-sos";
-import { makeContext } from "./helpers/adapterContext";
-
-const FIXTURE = readFileSync(
-  join(__dirname, "fixtures/la-sos-search.html"),
-  "utf-8"
-);
 
 describe("la-sos adapter", () => {
-  beforeEach(() => {
-    vi.stubGlobal("fetch", async () => new Response(FIXTURE, { status: 200 }));
-  });
+  afterEach(() => vi.unstubAllGlobals());
 
-  it("parses business registration records from HTML", async () => {
-    const ctx = makeContext();
-    const result = await laSosAdapter.fetch(ctx);
-    expect(result.records.length).toBeGreaterThan(0);
-  });
-
-  it("assigns entity.registration predicate", async () => {
-    const ctx = makeContext();
-    const result = await laSosAdapter.fetch(ctx);
-    result.records.forEach((r) => {
-      expect(r.predicate).toMatch(/^entity\./);
+  it("parses SOS search HTML into ENTITY_FORMATION signals", async () => {
+    // La SOS makes two requests: GET (cookie seed) then POST (search).
+    // We stub fetch to return the same fixture for both calls.
+    const stub = vi.fn(async () => {
+      const { readFile } = await import("node:fs/promises");
+      const { resolve } = await import("node:path");
+      const body = await readFile(
+        resolve(__dirname, "fixtures", "la-sos-search.html"),
+        "utf8",
+      );
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/html", "set-cookie": "ASP.NET_SessionId=test123" },
+      });
     });
+    vi.stubGlobal("fetch", stub);
+
+    const result = await laSosAdapter.run(fakeContext("la-sos"));
+    expect(result.records.length).toBeGreaterThan(0);
+    const r = result.records[0];
+    expect(r.family).toBe("ENTITY_FORMATION");
+    expect(r.predicate).toMatch(/^entity\.formed/);
+    expect(r.confidence).toBeGreaterThan(0.5);
   });
 
-  it("includes business name in title", async () => {
-    const ctx = makeContext();
-    const result = await laSosAdapter.fetch(ctx);
-    const gulf = result.records.find((r) =>
-      r.title.includes("Gulf Coast Petrochem")
+  it("marks opaque entities with entity.formed.opaque predicate", async () => {
+    const stub = vi.fn(async () => {
+      const { readFile } = await import("node:fs/promises");
+      const { resolve } = await import("node:path");
+      const body = await readFile(
+        resolve(__dirname, "fixtures", "la-sos-search.html"),
+        "utf8",
+      );
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/html", "set-cookie": "ASP.NET_SessionId=test123" },
+      });
+    });
+    vi.stubGlobal("fetch", stub);
+
+    const result = await laSosAdapter.run(fakeContext("la-sos"));
+    // "CRESCENT INDUSTRIAL HOLDINGS IV LLC" has "holdings" → opaque
+    const opaque = result.records.find((r) =>
+      r.subjectLabel.toLowerCase().includes("crescent industrial"),
     );
-    expect(gulf).toBeDefined();
+    expect(opaque).toBeDefined();
+    expect(opaque!.predicate).toBe("entity.formed.opaque");
   });
 
-  it("returns empty array on fetch error", async () => {
-    vi.stubGlobal("fetch", async () => { throw new Error("connection refused"); });
-    const ctx = makeContext();
-    const result = await laSosAdapter.fetch(ctx);
-    expect(result.records).toEqual([]);
+  it("has slug la-sos and implemented:true", () => {
+    expect(laSosAdapter.slug).toBe("la-sos");
+    expect(laSosAdapter.implemented).toBe(true);
+    expect(laSosAdapter.family).toBe("ENTITY_FORMATION");
   });
 });

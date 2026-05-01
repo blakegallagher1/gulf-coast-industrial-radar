@@ -1,17 +1,14 @@
 /**
- * Factory for minimal AdapterContext objects used in tests.
+ * Builds a minimal fake AdapterContext for unit tests.
  */
 import type { AdapterContext } from "../../src/types";
 
-export function makeContext(overrides: Partial<AdapterContext> = {}): AdapterContext {
+export function fakeContext(sourceSlug: string, overrides: Partial<AdapterContext> = {}): AdapterContext {
   return {
-    parish: "East Baton Rouge",
-    logger: {
-      info: () => {},
-      warn: () => {},
-      error: () => {},
-      debug: () => {},
-    },
+    sourceId: `src-test-${sourceSlug}`,
+    sourceRunId: `run-test-${sourceSlug}-001`,
+    cursor: undefined,
+    since: new Date("2026-04-01T00:00:00Z"),
     ...overrides,
   };
 }

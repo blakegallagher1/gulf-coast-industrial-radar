@@ -1,62 +1,33 @@
 /**
- * Mock fetch helper for adapter unit tests.
- *
- * Usage:
- *   const { fetch, setResponse } = createMockFetch();
- *   setResponse(200, fixtureText);
- *   // inject fetch into adapter context or globalThis
+ * Shared fetch mock helper — no MSW dependency.
+ * Stubs the global fetch for one request, returning fixture file contents.
  */
+import { vi } from "vitest";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
-export interface MockFetchHandle {
-  fetch: typeof globalThis.fetch;
-  setResponse(status: number, body: string, headers?: Record<string, string>): void;
-  setError(err: Error): void;
-  calls: Array<{ url: string; init?: RequestInit }>;
-  reset(): void;
+export function mockFetchOnce(fixturePath: string, mime: string) {
+  const stub = vi.fn(async () => {
+    const body = await readFile(
+      resolve(__dirname, "..", "fixtures", fixturePath),
+      "utf8",
+    );
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": mime },
+    });
+  });
+  vi.stubGlobal("fetch", stub);
+  return stub;
 }
 
-export function createMockFetch(): MockFetchHandle {
-  let nextStatus = 200;
-  let nextBody = "";
-  let nextHeaders: Record<string, string> = {};
-  let nextError: Error | null = null;
-  const calls: Array<{ url: string; init?: RequestInit }> = [];
-
-  const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
-    calls.push({ url, init });
-
-    if (nextError) {
-      const err = nextError;
-      nextError = null;
-      throw err;
-    }
-
-    const status = nextStatus;
-    const body = nextBody;
-    const headers = new Headers(nextHeaders);
-
-    return new Response(body, { status, headers });
-  };
-
-  return {
-    fetch: fetch as unknown as typeof globalThis.fetch,
-    setResponse(status, body, headers = {}) {
-      nextStatus = status;
-      nextBody = body;
-      nextHeaders = headers;
-      nextError = null;
-    },
-    setError(err) {
-      nextError = err;
-    },
-    calls,
-    reset() {
-      nextStatus = 200;
-      nextBody = "";
-      nextHeaders = {};
-      nextError = null;
-      calls.length = 0;
-    },
-  };
+/**
+ * Stub fetch to return an empty 200 response (for adapters that call
+ * multiple URLs in sequence — call this after setting the first mock if
+ * additional calls are expected but not under test).
+ */
+export function mockFetchEmpty(mime = "application/json") {
+  const stub = vi.fn(async () => new Response("{}", { status: 200, headers: { "content-type": mime } }));
+  vi.stubGlobal("fetch", stub);
+  return stub;
 }

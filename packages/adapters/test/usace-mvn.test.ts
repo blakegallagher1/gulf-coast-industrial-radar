@@ -1,55 +1,57 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { mockFetchOnce } from "./helpers/mockFetch";
+import { fakeContext } from "./helpers/adapterContext";
 import { usaceMvnAdapter } from "../src/usace-mvn";
-import { makeContext } from "./helpers/adapterContext";
-
-const FIXTURE = readFileSync(
-  join(__dirname, "fixtures/usace-mvn-notices.html"),
-  "utf-8"
-);
 
 describe("usace-mvn adapter", () => {
-  beforeEach(() => {
-    vi.stubGlobal("fetch", async () => new Response(FIXTURE, { status: 200 }));
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("parses HTML notices into ENVIRONMENTAL_PERMIT signals", async () => {
+    mockFetchOnce("usace-mvn-notices.html", "text/html");
+    const result = await usaceMvnAdapter.run(fakeContext("usace-mvn"));
+    expect(result.records.length).toBeGreaterThan(0);
+    const r = result.records[0];
+    expect(r.family).toBe("ENVIRONMENTAL_PERMIT");
+    expect(r.predicate).toMatch(/^permit\./);
+    expect(r.confidence).toBeGreaterThan(0.5);
   });
 
-  it("parses public notice records from USACE MVN HTML", async () => {
-    const ctx = makeContext();
-    const result = await usaceMvnAdapter.fetch(ctx);
-    expect(result.records.length).toBe(2);
+  it("assigns permit.wetlands.404 for Section 404 notice", async () => {
+    mockFetchOnce("usace-mvn-notices.html", "text/html");
+    const result = await usaceMvnAdapter.run(fakeContext("usace-mvn"));
+    const s404 = result.records.find((r) => r.subjectLabel.toLowerCase().includes("404"));
+    expect(s404).toBeDefined();
+    expect(s404!.predicate).toBe("permit.wetlands.404");
   });
 
-  it("uses permit number as sourceId", async () => {
-    const ctx = makeContext();
-    const result = await usaceMvnAdapter.fetch(ctx);
-    const notice = result.records.find((r) =>
-      r.sourceId.includes("MVN-2024-00123-P")
-    );
-    expect(notice).toBeDefined();
+  it("assigns permit.section10 for Section 10 notice", async () => {
+    mockFetchOnce("usace-mvn-notices.html", "text/html");
+    const result = await usaceMvnAdapter.run(fakeContext("usace-mvn"));
+    const s10 = result.records.find((r) => r.subjectLabel.toLowerCase().includes("section 10"));
+    expect(s10).toBeDefined();
+    expect(s10!.predicate).toBe("permit.section10");
   });
 
-  it("assigns permit.wetlands.404 predicate", async () => {
-    const ctx = makeContext();
-    const result = await usaceMvnAdapter.fetch(ctx);
-    result.records.forEach((r) => {
-      expect(r.predicate).toBe("permit.wetlands.404");
-    });
+  it("assigns permit.section408 for Section 408 notice", async () => {
+    mockFetchOnce("usace-mvn-notices.html", "text/html");
+    const result = await usaceMvnAdapter.run(fakeContext("usace-mvn"));
+    const s408 = result.records.find((r) => r.subjectLabel.toLowerCase().includes("408"));
+    expect(s408).toBeDefined();
+    expect(s408!.predicate).toBe("permit.section408");
   });
 
-  it("extracts location from Location column", async () => {
-    const ctx = makeContext();
-    const result = await usaceMvnAdapter.fetch(ctx);
-    const iberville = result.records.find((r) =>
-      r.location?.raw?.includes("Iberville")
-    );
-    expect(iberville).toBeDefined();
+  it("url field is the PDF link (absolute)", async () => {
+    mockFetchOnce("usace-mvn-notices.html", "text/html");
+    const result = await usaceMvnAdapter.run(fakeContext("usace-mvn"));
+    for (const r of result.records) {
+      expect(r.url).toMatch(/^https?:\/\//);
+      expect(r.url).toMatch(/\.pdf$/i);
+    }
   });
 
-  it("returns empty records on fetch error", async () => {
-    vi.stubGlobal("fetch", async () => { throw new Error("ETIMEDOUT"); });
-    const ctx = makeContext();
-    const result = await usaceMvnAdapter.fetch(ctx);
-    expect(result.records).toEqual([]);
+  it("has slug usace-mvn and implemented:true", () => {
+    expect(usaceMvnAdapter.slug).toBe("usace-mvn");
+    expect(usaceMvnAdapter.implemented).toBe(true);
+    expect(usaceMvnAdapter.family).toBe("ENVIRONMENTAL_PERMIT");
   });
 });
