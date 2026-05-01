@@ -147,7 +147,7 @@ async function bootstrap() {
   new Cron("0 6 * * 1",    { protect: true }, tickBrief);
   new Cron("0 */4 * * *",  { protect: true }, tickBudgetReport);
 
-  console.log("✓ schedulers active. Press ^C to stop .");
+  console.log("✓ schedulers active. Press ^C to stop.");
 }
 
 bootstrap().catch((err) => {
