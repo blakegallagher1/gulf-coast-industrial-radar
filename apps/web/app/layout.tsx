@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
+const authDisabled = process.env.NEXT_PUBLIC_DISABLE_AUTH === "true";
+const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
 export const metadata: Metadata = {
   title: {
     default: "Gulf Coast Industrial Radar",
@@ -12,11 +15,8 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function MaybeClerk({ children }: { children: React.ReactNode }) {
+  if (authDisabled || !clerkPublishableKey) return <>{children}</>;
   return (
     <ClerkProvider
       signInFallbackRedirectUrl="/radar"
@@ -29,6 +29,18 @@ export default function RootLayout({
         },
       }}
     >
+      {children}
+    </ClerkProvider>
+  );
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <MaybeClerk>
       <html lang="en">
         <head>
           <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -44,6 +56,6 @@ export default function RootLayout({
         </head>
         <body>{children}</body>
       </html>
-    </ClerkProvider>
+    </MaybeClerk>
   );
 }
