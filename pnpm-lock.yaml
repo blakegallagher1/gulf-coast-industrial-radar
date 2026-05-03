@@ -170,6 +170,9 @@ importers:
 
   packages/agents:
     dependencies:
+      '@gcir/adapters':
+        specifier: workspace:*
+        version: link:../adapters
       '@gcir/db':
         specifier: workspace:*
         version: link:../db
