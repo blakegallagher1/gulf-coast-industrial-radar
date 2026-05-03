@@ -11,6 +11,13 @@
     --drawer-w: 480px;
   }
 
+  @media (max-width: 768px) {
+    :root {
+      --drawer-w: 100vw;
+      --rail-w: 0px;
+    }
+  }
+
   html, body { height: 100%; }
   body {
     @apply bg-bg text-ink antialiased;

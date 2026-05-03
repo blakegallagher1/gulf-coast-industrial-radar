@@ -1,16 +1,17 @@
 // Gulf Coast Industrial Radar — primary schema
 // Mirrors knowledge/implementation/data-model.md
-// PostGIS extension required (managed via the migration in prisma/migrations/0_postgis/).
+// PostgreSQL extensions are managed with custom migrations. Prisma's
+// postgresqlExtensions preview feature is intentionally not used here because
+// current Prisma guidance recommends custom migrations, and Supabase/PostGIS
+// schema placement needs explicit SQL control.
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["postgresqlExtensions"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider   = "postgresql"
-  url        = env("DATABASE_URL")
-  extensions = [postgis]
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ============================================================================
@@ -162,18 +163,22 @@ enum ActionKind {
 // ============================================================================
 
 model User {
-  id              String       @id @default(cuid())
-  clerkId         String       @unique
-  email           String       @unique
-  name            String?
-  imageUrl        String?
-  org             String?
-  role            String       @default("analyst")
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  watchlists      Watchlist[]
-  reviews         AnalystReview[]
-  briefRecipients BriefRecipient[]
+  id                   String           @id @default(cuid())
+  clerkId              String           @unique
+  email                String           @unique
+  name                 String?
+  imageUrl             String?
+  org                  String?
+  role                 String           @default("analyst")
+  plan                 String           @default("free")
+  stripeCustomerId     String?          @unique
+  stripeSubscriptionId String?
+  planExpiresAt        DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  watchlists           Watchlist[]
+  reviews              AnalystReview[]
+  briefRecipients      BriefRecipient[]
 }
 
 // ============================================================================
@@ -247,8 +252,10 @@ model RawDocument {
   metadata      Json?
   extractedClaims ExtractedClaim[]
   signals         Signal[]
+  parcelSnapshots ParcelSnapshot[]
 
   @@index([sourceId, observedAt])
+  @@index([sourceRunId])
 }
 
 /// A structured fact pulled from a RawDocument by the DocumentExtraction agent
@@ -268,6 +275,7 @@ model ExtractedClaim {
 
   @@index([predicate])
   @@index([subject])
+  @@index([rawDocumentId])
 }
 
 // ============================================================================
@@ -373,6 +381,7 @@ model ParcelSnapshot {
   metadata      Json?
 
   @@index([parcelId, observedAt])
+  @@index([rawDocumentId])
 }
 
 /// Site ↔ Parcel link with the ownership / control kind
@@ -392,6 +401,7 @@ model ParcelInterest {
 
   @@index([siteId])
   @@index([parcelId])
+  @@index([buyerEntityId])
 }
 
 // ============================================================================
@@ -466,6 +476,10 @@ model Signal {
 
   @@index([projectId, observedAt])
   @@index([family, observedAt])
+  @@index([entityId])
+  @@index([rawDocumentId])
+  @@index([sourceId])
+  @@index([sourceRunId])
 }
 
 model ProjectMilestone {
@@ -512,6 +526,7 @@ model Alert {
 
   @@index([projectId, createdAt])
   @@index([publicCoverageFound, createdAt])
+  @@index([watchlistId])
 }
 
 model RecommendedAction {
@@ -545,6 +560,7 @@ model AnalystReview {
   updatedAt     DateTime     @updatedAt
 
   @@index([projectId, state])
+  @@index([reviewerId])
 }
 
 // ============================================================================
@@ -564,6 +580,8 @@ model Watchlist {
 
   items       WatchlistItem[]
   alerts      Alert[]
+
+  @@index([userId])
 }
 
 model WatchlistItem {
@@ -577,6 +595,7 @@ model WatchlistItem {
   createdAt   DateTime    @default(now())
 
   @@unique([watchlistId, projectId])
+  @@index([projectId])
 }
 
 model Brief {
@@ -608,6 +627,30 @@ model BriefRecipient {
   clickedAt   DateTime?
 
   @@index([briefId])
+  @@index([userId])
+}
+
+model Subscriber {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  source    String   @default("landing")
+  createdAt DateTime @default(now())
+}
+
+model UsageEvent {
+  id          String   @id @default(cuid())
+  eventType   String   // page_view | action_click | entity_opened | promotion_run | brief_publish
+  surface     String   // alerts | proof | brief | watchlist | radar
+  targetType  String?  // project | alert | watchlist | brief | candidate
+  targetId    String?
+  userId      String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([eventType, createdAt])
+  @@index([surface, createdAt])
+  @@index([targetType, targetId])
+  @@index([userId, createdAt])
 }
 
 // ============================================================================

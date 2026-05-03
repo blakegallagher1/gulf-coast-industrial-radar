@@ -1,28 +1,40 @@
 {
-  "objectIdFieldName": "OBJECTID",
+  "objectIdFieldName": "OBJECTID_12",
   "geometryType": "esriGeometryPolygon",
   "spatialReference": { "wkid": 4326 },
   "fields": [
-    { "name": "PARCEL_ID", "type": "esriFieldTypeString" },
-    { "name": "OWNER", "type": "esriFieldTypeString" },
-    { "name": "ACRES", "type": "esriFieldTypeDouble" },
-    { "name": "ADDRESS", "type": "esriFieldTypeString" },
-    { "name": "ZONING", "type": "esriFieldTypeString" },
-    { "name": "LAST_UPD", "type": "esriFieldTypeDate" },
-    { "name": "SALE_DATE", "type": "esriFieldTypeDate" },
-    { "name": "SALE_PRICE", "type": "esriFieldTypeDouble" }
+    { "name": "OBJECTID_12", "type": "esriFieldTypeOID" },
+    { "name": "PN_Join", "type": "esriFieldTypeString" },
+    { "name": "Owner_Name", "type": "esriFieldTypeString" },
+    { "name": "Owner_Address", "type": "esriFieldTypeString" },
+    { "name": "Owner_CityStateZipCode", "type": "esriFieldTypeString" },
+    { "name": "Address_Number", "type": "esriFieldTypeString" },
+    { "name": "Street_Name", "type": "esriFieldTypeString" },
+    { "name": "SaleDate", "type": "esriFieldTypeDate" },
+    { "name": "SalesPrice", "type": "esriFieldTypeDouble" },
+    { "name": "Prior_Owner", "type": "esriFieldTypeString" },
+    { "name": "DeedNumber", "type": "esriFieldTypeString" },
+    { "name": "Assessed_Value", "type": "esriFieldTypeDouble" },
+    { "name": "EditDate", "type": "esriFieldTypeDate" },
+    { "name": "Parcel_Link", "type": "esriFieldTypeString" }
   ],
   "features": [
     {
       "attributes": {
-        "PARCEL_ID": "0140002200",
-        "OWNER": "CRESCENT INDUSTRIAL HOLDINGS I LLC",
-        "ACRES": 245.7,
-        "ADDRESS": "0 RIVER RD, DONALDSONVILLE LA 70346",
-        "ZONING": "M2",
-        "LAST_UPD": 1743465600000,
-        "SALE_DATE": 1743465600000,
-        "SALE_PRICE": 4800000
+        "OBJECTID_12": 41,
+        "PN_Join": "0140002200",
+        "Owner_Name": "CRESCENT INDUSTRIAL HOLDINGS I LLC",
+        "Owner_Address": "0 RIVER RD",
+        "Owner_CityStateZipCode": "DONALDSONVILLE LA 70346",
+        "Address_Number": "0",
+        "Street_Name": "RIVER RD",
+        "SaleDate": 1743465600000,
+        "SalesPrice": 4800000,
+        "Prior_Owner": "RIVER ROAD LAND LLC",
+        "DeedNumber": "2025-001",
+        "Assessed_Value": 480000,
+        "EditDate": 1743465600000,
+        "Parcel_Link": "https://gis.ascensionparishla.gov/parcel/0140002200"
       },
       "geometry": {
         "rings": [[[-90.99, 30.07], [-90.98, 30.07], [-90.98, 30.06], [-90.99, 30.06], [-90.99, 30.07]]]
@@ -30,14 +42,20 @@
     },
     {
       "attributes": {
-        "PARCEL_ID": "0140002201",
-        "OWNER": "CRESCENT INDUSTRIAL HOLDINGS II LLC",
-        "ACRES": 312.4,
-        "ADDRESS": "0 RIVER RD, DONALDSONVILLE LA 70346",
-        "ZONING": "M2",
-        "LAST_UPD": 1743552000000,
-        "SALE_DATE": 1743552000000,
-        "SALE_PRICE": 6100000
+        "OBJECTID_12": 42,
+        "PN_Join": "0140002201",
+        "Owner_Name": "CRESCENT INDUSTRIAL HOLDINGS II LLC",
+        "Owner_Address": "0 RIVER RD",
+        "Owner_CityStateZipCode": "DONALDSONVILLE LA 70346",
+        "Address_Number": "0",
+        "Street_Name": "RIVER RD",
+        "SaleDate": 1743552000000,
+        "SalesPrice": 6100000,
+        "Prior_Owner": "RIVER ROAD LAND LLC",
+        "DeedNumber": "2025-002",
+        "Assessed_Value": 610000,
+        "EditDate": 1743552000000,
+        "Parcel_Link": "https://gis.ascensionparishla.gov/parcel/0140002201"
       },
       "geometry": {
         "rings": [[[-90.98, 30.07], [-90.97, 30.07], [-90.97, 30.06], [-90.98, 30.06], [-90.98, 30.07]]]

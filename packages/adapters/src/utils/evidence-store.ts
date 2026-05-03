@@ -12,7 +12,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { prisma } from "@gcir/db";
+import { Prisma, prisma } from "@gcir/db";
 
 export type StoreEvidenceArgs = {
   sourceId: string;
@@ -38,21 +38,31 @@ export async function storeEvidence(args: StoreEvidenceArgs) {
 
   const storageKey = await writeBlob(hash, buf, args.mimeType);
 
-  return prisma.rawDocument.create({
-    data: {
-      sourceId: args.sourceId,
-      sourceRunId: args.sourceRunId,
-      url: args.url,
-      contentHash: hash,
-      storageKey,
-      mimeType: args.mimeType,
-      bytes: buf.byteLength,
-      title: args.title,
-      excerpt: args.excerpt?.slice(0, 1024),
-      documentDate: args.documentDate,
-      metadata: (args.metadata ?? null) as never,
-    },
-  });
+  try {
+    return await prisma.rawDocument.create({
+      data: {
+        sourceId: args.sourceId,
+        sourceRunId: args.sourceRunId,
+        url: args.url,
+        contentHash: hash,
+        storageKey,
+        mimeType: args.mimeType,
+        bytes: buf.byteLength,
+        title: args.title,
+        excerpt: args.excerpt?.slice(0, 1024),
+        documentDate: args.documentDate,
+        metadata: (args.metadata ?? null) as never,
+      },
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const raced = await prisma.rawDocument.findUnique({
+        where: { contentHash: hash },
+      });
+      if (raced) return raced;
+    }
+    throw err;
+  }
 }
 
 async function writeBlob(hash: string, buf: Buffer, mime: string): Promise<string> {
