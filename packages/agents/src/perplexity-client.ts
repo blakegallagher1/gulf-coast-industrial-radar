@@ -30,9 +30,11 @@ import { z, type ZodSchema, type ZodTypeDef } from "zod";
 import { prisma } from "@gcir/db";
 import { zodToJsonSchema } from "./openai-client";
 
-const client = new Perplexity({
-  apiKey: process.env.PERPLEXITY_API_KEY,
-});
+let _pplxClient: Perplexity | undefined;
+function getPerplexityClient() {
+  if (!_pplxClient) _pplxClient = new Perplexity({ apiKey: process.env.PERPLEXITY_API_KEY });
+  return _pplxClient;
+}
 
 /**
  * Preset routing for runtime calls. Each key maps to a Perplexity Agent API
@@ -390,7 +392,7 @@ async function callAgent(args: AgentInput): Promise<AgentResponse> {
   // failing the cron tick. The hard daily budget cap remains the safety net.
   const label = args.preset ?? args.model ?? "agent";
   return withRetry(
-    async () => (await client.responses.create(args as never)) as unknown as AgentResponse,
+    async () => (await getPerplexityClient().responses.create(args as never)) as unknown as AgentResponse,
     label,
   );
 }
