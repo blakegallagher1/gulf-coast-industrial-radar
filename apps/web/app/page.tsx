@@ -18,9 +18,9 @@ export const dynamic = "force-dynamic";
 
 export default async function LandingPage() {
   const [projectCount, signalCount, sourceCount] = await Promise.all([
-    prisma.project.count(),
-    prisma.signal.count(),
-    prisma.source.count({ where: { status: "ACTIVE" } }),
+    prisma.project.count().catch(() => 0),
+    prisma.signal.count().catch(() => 0),
+    prisma.source.count({ where: { status: "ACTIVE" } }).catch(() => 0),
   ]);
 
   return (
