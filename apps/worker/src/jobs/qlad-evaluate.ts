@@ -21,22 +21,27 @@
  */
 
 import { createHash } from "node:crypto";
-import { prisma, EntityRelationship } from "@gcir/db";
-import {
-  detectQuietLandAssembly,
-  type AssemblyInput,
-  type Acquisition,
-} from "@gcir/scoring";
+import * as db from "@gcir/db";
+import * as scoring from "@gcir/scoring";
+import * as shared from "@gcir/shared";
+import * as agents from "@gcir/agents";
+import type { EntityRelationship } from "@gcir/db";
+import type { AssemblyInput, Acquisition } from "@gcir/scoring";
 import type { InfraAsset } from "@gcir/shared";
-import {
-  validateAssembly,
-  recommendActions,
-  type ValidationOutput,
-  PerplexityDisabledError,
-} from "@gcir/agents";
+import type { ValidationOutput } from "@gcir/agents";
 
 const FEATURE_QLAD_LIVE = process.env.FEATURE_QLAD_LIVE_ALERTING === "true";
 const FEATURE_PPLX = process.env.FEATURE_PERPLEXITY_VALIDATION === "true";
+const prisma = db.prisma;
+const detectQuietLandAssembly = scoring.detectQuietLandAssembly;
+const validateAssembly = agents.validateAssembly;
+const recommendActions = agents.recommendActions;
+const RELATED_ENTITY_RELATIONSHIPS = [
+  "SHARES_REGISTERED_AGENT",
+  "SHARES_MAILING_ADDRESS",
+  "AFFILIATE_OF",
+  "ANALYST_LINKED",
+] as EntityRelationship[];
 
 export type QladTickResult = {
   signalsConsidered: number;
@@ -45,6 +50,8 @@ export type QladTickResult = {
   alertsCreated: number;
   alertsSilenced: number;
   totalValidationUsd: number;
+  rejectionStats: Array<{ reason: string; count: number }>;
+  ownerConcentrationCandidates: number;
 };
 
 export async function tickQlad(): Promise<QladTickResult> {
@@ -55,18 +62,24 @@ export async function tickQlad(): Promise<QladTickResult> {
     alertsCreated: 0,
     alertsSilenced: 0,
     totalValidationUsd: 0,
+    rejectionStats: [],
+    ownerConcentrationCandidates: 0,
   };
+  const rejectionCounts = new Map<string, number>();
   if (!FEATURE_QLAD_LIVE) {
     console.log("[qlad] FEATURE_QLAD_LIVE_ALERTING=false; skipping");
     return result;
   }
 
   // 1. Pull recent land-control signals
+  const MAX_LAND_CONTROL_SIGNALS = Number(
+    process.env.QLAD_MAX_LAND_CONTROL_SIGNALS ?? "15000",
+  );
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const signals = await prisma.signal.findMany({
     where: { family: "LAND_CONTROL", observedAt: { gte: since } },
     orderBy: { observedAt: "desc" },
-    take: 500,
+    take: MAX_LAND_CONTROL_SIGNALS,
     include: { source: true },
   });
   result.signalsConsidered = signals.length;
@@ -81,7 +94,31 @@ export async function tickQlad(): Promise<QladTickResult> {
   // 3. Evaluate each cluster
   for (const c of clusters) {
     const detection = detectQuietLandAssembly(c.input);
-    if (!detection.triggered) continue;
+    const clusterTotalAcres = c.input.acquisitions.reduce((sum, a) => sum + a.acres, 0);
+    const ownerKeys = Array.from(c.buyerEntityIds);
+    const institutionalOwner = ownerKeys.some((key) =>
+      /\b(llc|lp|l\.p\.|inc|corp|co|ltd|trust|partnership|holdings|development|properties|resources|timber|land|oil)\b/i.test(
+        key,
+      ),
+    );
+    const ownerConcentrationTriggered =
+      clusterTotalAcres >= shared.QLAD.minAcresControlled &&
+      c.input.acquisitions.length >= 10 &&
+      c.parishCounty !== "unknown" &&
+      c.input.nearbyInfra.length >= shared.QLAD.minInfraAssets &&
+      institutionalOwner;
+    if (ownerConcentrationTriggered) {
+      result.ownerConcentrationCandidates++;
+    }
+    if (!detection.triggered && !ownerConcentrationTriggered) {
+      for (const reason of detection.reasons) {
+        rejectionCounts.set(reason, (rejectionCounts.get(reason) ?? 0) + 1);
+      }
+      if (detection.reasons.length === 0) {
+        rejectionCounts.set("no explicit detector reason recorded", (rejectionCounts.get("no explicit detector reason recorded") ?? 0) + 1);
+      }
+      continue;
+    }
     result.clustersTriggered++;
 
     // Find or create the Project this cluster represents
@@ -102,17 +139,18 @@ export async function tickQlad(): Promise<QladTickResult> {
         });
         result.totalValidationUsd += validation.totalCostUsd;
       } catch (err) {
-        if (!(err instanceof PerplexityDisabledError)) {
-          console.warn(`[qlad] validation failed for ${project.id}:`, (err as Error).message);
-        }
+        console.warn(`[qlad] validation failed for ${project.id}:`, (err as Error).message);
       }
     }
 
     // 3d / 3e — write Alert
     const publicCoverageFound = validation?.publicCoverageFound ?? false;
+    const alertKindLabel = ownerConcentrationTriggered && !detection.triggered
+      ? "Owner Concentration Watch"
+      : "Quiet Land Assembly";
     const alertTitle = publicCoverageFound
-      ? `Quiet Land Assembly · already publicly explained · ${c.parishCounty}`
-      : `Quiet Land Assembly · ${Math.round(detection.totalAcres).toLocaleString()} ac · ${c.parishCounty}`;
+      ? `${alertKindLabel} · already publicly explained · ${c.parishCounty}`
+      : `${alertKindLabel} · ${Math.round(detection.totalAcres).toLocaleString()} ac · ${c.parishCounty}`;
     const alertBody = renderAlertBody(c, detection, validation);
 
     const alert = await prisma.alert.upsert({
@@ -140,7 +178,11 @@ export async function tickQlad(): Promise<QladTickResult> {
         body: alertBody,
         score: project.score,
         scoreDelta: 0,
-        reasonCode: publicCoverageFound ? "qlad.public-coverage" : "qlad.triggered",
+        reasonCode: publicCoverageFound
+          ? "qlad.public-coverage"
+          : ownerConcentrationTriggered && !detection.triggered
+            ? "qlad.owner-concentration"
+            : "qlad.triggered",
         publicCoverageFound,
         supplementaryEvidence: validation
           ? ({
@@ -179,6 +221,10 @@ export async function tickQlad(): Promise<QladTickResult> {
   console.log(
     `[qlad] signals=${result.signalsConsidered} clusters=${result.clustersBuilt} triggered=${result.clustersTriggered} created=${result.alertsCreated} silenced=${result.alertsSilenced} cost=$${result.totalValidationUsd.toFixed(2)}`,
   );
+  result.rejectionStats = Array.from(rejectionCounts.entries())
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 12);
   return result;
 }
 
@@ -190,6 +236,7 @@ type ClusterCandidate = {
   state: string;
   buyerEntityIds: Set<string>;
   signalIds: string[];
+  snapshotOnly: boolean;
   bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number } | undefined;
   input: AssemblyInput;
 };
@@ -197,18 +244,22 @@ type ClusterCandidate = {
 async function buildClusters(
   signals: Array<{
     id: string;
+    predicate: string;
     payload: unknown;
     documentDate: Date | null;
     observedAt: Date;
+    source?: { slug: string } | null;
   }>,
 ): Promise<ClusterCandidate[]> {
-  // Bucket signals by parish + acquired-buyer-entity (resolved through
-  // EntityLink edges). For v0 simplicity: cluster by parish only;
-  // EntityLink-driven cluster widening lands in Phase D.1.
+  // Bucket signals by parish + buyer/owner. Parcel adapters emit current
+  // ownership snapshots rather than deed events, so clustering all parcels in a
+  // parish would create false positives.
   const byParish = new Map<string, typeof signals>();
   for (const s of signals) {
-    const p = (s.payload as { parish?: string; parishCounty?: string }) ?? {};
-    const key = (p.parishCounty ?? p.parish ?? "unknown") + "::LA";
+    const p = (s.payload as { parish?: string; parishCounty?: string; owner?: string; buyerEntityId?: string }) ?? {};
+    const geo = inferSignalGeography(s.source?.slug, p);
+    const buyerKey = normalizeBuyerKey(p.buyerEntityId ?? p.owner);
+    const key = `${geo.parishCounty}::${geo.state}::${buyerKey}`;
     if (!byParish.has(key)) byParish.set(key, []);
     byParish.get(key)!.push(s);
   }
@@ -216,32 +267,42 @@ async function buildClusters(
   const out: ClusterCandidate[] = [];
   for (const [key, items] of byParish) {
     if (items.length < 3) continue; // need at least 3 land transfers to cluster
-    const [parishCounty, state] = key.split("::");
+    const [parishCounty = "unknown", state = "LA", ownerKey = "unknown"] = key.split("::");
 
     const buyerEntityIds = new Set<string>();
     const acquisitions: Acquisition[] = [];
+    const parcelCoords = new Map<string, { lat: number; lng: number }>();
     let bbox: ClusterCandidate["bbox"];
 
     for (const s of items) {
       const p = s.payload as {
         parcelId?: string;
+        parcelNumber?: string;
         acres?: number;
+        acresApprox?: number;
         buyerEntityId?: string;
+        owner?: string;
         pricePerAcre?: number;
         geometry?: { rings?: number[][][] } | null;
       };
-      if (!p.parcelId || !p.acres) continue;
+      const parcelId = p.parcelId ?? p.parcelNumber;
+      const acres = p.acres ?? p.acresApprox;
+      if (!parcelId || !acres) continue;
+      const buyerEntityId = p.buyerEntityId ?? ownerKey;
       acquisitions.push({
-        parcelId: p.parcelId,
-        acres: p.acres,
+        parcelId,
+        acres,
         acquiredAt: s.documentDate ?? s.observedAt,
-        buyerEntityId: p.buyerEntityId ?? "unknown",
+        buyerEntityId,
         distanceMiles: 0, // filled in after centroid pass
         pricePerAcre: p.pricePerAcre,
       });
-      if (p.buyerEntityId) buyerEntityIds.add(p.buyerEntityId);
-      if (p.geometry?.rings?.[0]?.[0]) {
-        const [lng, lat] = p.geometry.rings[0][0];
+      if (buyerEntityId !== "unknown") buyerEntityIds.add(buyerEntityId);
+      const point = p.geometry?.rings?.[0]?.[0];
+      if (point) {
+        const [lng, lat] = point;
+        if (typeof lng !== "number" || typeof lat !== "number") continue;
+        parcelCoords.set(parcelId, { lat, lng });
         bbox = bbox
           ? {
               minLat: Math.min(bbox.minLat, lat),
@@ -259,11 +320,18 @@ async function buildClusters(
     if (bbox) {
       const cx = (bbox.minLng + bbox.maxLng) / 2;
       const cy = (bbox.minLat + bbox.maxLat) / 2;
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const R = 3958.8;
       acquisitions.forEach((a) => {
-        // We don't have per-parcel coords reliably yet — leave at 0 mi.
-        // The detector treats 0 as "contiguous" which is correct here.
-        void cx; void cy;
-        a.distanceMiles = 0;
+        const coord = parcelCoords.get(a.parcelId);
+        if (coord) {
+          const dLat = toRad(coord.lat - cy);
+          const dLng = toRad(coord.lng - cx);
+          const sinLat = Math.sin(dLat / 2);
+          const sinLng = Math.sin(dLng / 2);
+          const h = sinLat * sinLat + Math.cos(toRad(cy)) * Math.cos(toRad(coord.lat)) * sinLng * sinLng;
+          a.distanceMiles = 2 * R * Math.asin(Math.sqrt(h));
+        }
       });
     }
 
@@ -277,12 +345,7 @@ async function buildClusters(
               { toId: { in: Array.from(buyerEntityIds) } },
             ],
             relationship: {
-              in: [
-                EntityRelationship.SHARES_REGISTERED_AGENT,
-                EntityRelationship.SHARES_MAILING_ADDRESS,
-                EntityRelationship.AFFILIATE_OF,
-                EntityRelationship.ANALYST_LINKED,
-              ],
+              in: RELATED_ENTITY_RELATIONSHIPS,
             },
           },
           select: { fromId: true, toId: true },
@@ -303,6 +366,7 @@ async function buildClusters(
       state,
       buyerEntityIds,
       signalIds: items.map((s) => s.id),
+      snapshotOnly: items.every((s) => s.predicate === "land.parcel.update"),
       bbox,
       input: {
         acquisitions,
@@ -316,13 +380,49 @@ async function buildClusters(
   return out;
 }
 
+function inferSignalGeography(
+  sourceSlug: string | undefined,
+  payload: { parish?: string; parishCounty?: string },
+): { parishCounty: string; state: string } {
+  if (payload.parishCounty || payload.parish) {
+    return { parishCounty: payload.parishCounty ?? payload.parish ?? "unknown", state: "LA" };
+  }
+  if (sourceSlug === "calcasieu-assessor") return { parishCounty: "Calcasieu", state: "LA" };
+  if (sourceSlug === "ascension-assessor") return { parishCounty: "Ascension", state: "LA" };
+  if (sourceSlug === "ebr-gis") return { parishCounty: "East Baton Rouge", state: "LA" };
+  return { parishCounty: "unknown", state: "LA" };
+}
+
+function normalizeBuyerKey(value: string | undefined): string {
+  const cleaned = value?.trim().replace(/\s+/g, " ");
+  if (!cleaned) return "unknown";
+  const normalized = cleaned.toLowerCase();
+  if (
+    normalized === "unknown" ||
+    normalized === "*" ||
+    normalized === "-" ||
+    normalized === "n/a"
+  ) {
+    return "unknown";
+  }
+  return normalized;
+}
+
 async function averageOpacity(ids: Set<string>): Promise<number> {
   if (ids.size === 0) return 0;
   const rows = await prisma.entity.findMany({
     where: { id: { in: Array.from(ids) } },
     select: { opacityScore: true },
   });
-  if (rows.length === 0) return 0;
+  if (rows.length === 0) {
+    return Array.from(ids).some((id) =>
+      /\b(llc|lp|l\.p\.|inc|corp|co|ltd|trust|partnership|holdings|development|properties|resources|timber|land|oil)\b/i.test(
+        id,
+      ),
+    )
+      ? 0.72
+      : 0.2;
+  }
   const total = rows.reduce((s, r) => s + (r.opacityScore ?? 0), 0);
   return total / rows.length;
 }
@@ -381,7 +481,7 @@ async function upsertProject(c: ClusterCandidate) {
   if (existing) return existing;
 
   const publicId = `PRJ-QLAD-${c.signature.slice(0, 8)}`;
-  return prisma.project.upsert({
+  const project = await prisma.project.upsert({
     where: { publicId },
     update: {},
     create: {
@@ -395,6 +495,27 @@ async function upsertProject(c: ClusterCandidate) {
       state: c.state,
       corridor: corridorFor(c.parishCounty),
       firstSignalAt: new Date(),
+    },
+  });
+  await ensureProjectSite(project.id, c);
+  return project;
+}
+
+async function ensureProjectSite(projectId: string, c: ClusterCandidate): Promise<void> {
+  const existing = await prisma.site.findFirst({ where: { projectId }, select: { id: true } });
+  if (existing) return;
+  const totalAcres = c.input.acquisitions.reduce((sum, a) => sum + a.acres, 0);
+  const centerLat = c.bbox ? (c.bbox.minLat + c.bbox.maxLat) / 2 : null;
+  const centerLng = c.bbox ? (c.bbox.minLng + c.bbox.maxLng) / 2 : null;
+  await prisma.site.create({
+    data: {
+      projectId,
+      name: `Detected assembly site · ${c.parishCounty}`,
+      centerLat,
+      centerLng,
+      totalAcres,
+      contiguousAcres: totalAcres,
+      infrastructureScore: Math.min(10, c.input.nearbyInfra.length * 2),
     },
   });
 }

@@ -1,9 +1,27 @@
 import { prisma } from "@gcir/db";
+import { auth } from "@clerk/nextjs/server";
+import { getPlan } from "@/lib/plan";
+import { UpgradeGate } from "@/components/upgrade-gate";
 import { fmtDate } from "@/lib/format";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export default async function WatchlistsPage() {
+  const session = await auth().catch(() => null);
+  const plan = await getPlan(session?.userId ?? null);
+
+  if (plan === "free") {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8">
+        <UpgradeGate
+          feature="Watchlists"
+          description="Save custom filters, track specific projects, and get notified when things change. Upgrade to build your watchlist."
+        />
+      </div>
+    );
+  }
+
   const watchlists = await prisma.watchlist.findMany({
     orderBy: { createdAt: "desc" },
     include: { _count: { select: { items: true, alerts: true } } },
@@ -43,7 +61,9 @@ export default async function WatchlistsPage() {
                   <span className="font-mono">created {fmtDate(w.createdAt)}</span>
                 </div>
               </div>
-              <button className="gcir-btn">Open</button>
+              <Link href={`/watchlists/${w.id}`} className="gcir-btn">
+                Open
+              </Link>
             </div>
           </li>
         ))}

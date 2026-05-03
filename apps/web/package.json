@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "sh -ac 'set -a; . ../../.env.local; set +a; exec next dev --turbopack'",
     "build": "next build",
-    "start": "next start",
+    "vercel-build": "cd ../.. && pnpm db:generate && pnpm --filter @gcir/web build",
+    "start": "sh -ac 'set -a; . ../../.env.local; set +a; exec next start'",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },
@@ -25,9 +26,10 @@
     "clsx": "^2.1.1",
     "lucide-react": "^0.453.0",
     "maplibre-gl": "^4.7.1",
-    "next": "16.0.0",
+    "next": "16.2.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "stripe": "^22.1.0",
     "swr": "^2.2.5",
     "tailwind-merge": "^2.5.4",
     "zod": "^3.23.8"

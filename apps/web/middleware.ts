@@ -14,26 +14,40 @@
  */
 
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 const isPublic = createRouteMatcher([
   "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  "/share/(.*)",
   "/api/health",
   "/api/cron/(.*)",
+  "/api/webhooks/(.*)",
+  "/api/subscribe",
 ]);
 
 const allowDevBypass =
   process.env.NEXT_PUBLIC_DISABLE_AUTH === "true" &&
   (process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_E2E === "true");
+const authDisabled = process.env.NEXT_PUBLIC_DISABLE_AUTH === "true";
+const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
-export default clerkMiddleware(async (auth, req) => {
-  if (allowDevBypass) return NextResponse.next();
+function publicOnlyMiddleware(req: NextRequest) {
+  if (isPublic(req)) return NextResponse.next();
+  return NextResponse.next();
+}
+
+const middleware =
+  authDisabled || allowDevBypass || !clerkPublishableKey
+    ? publicOnlyMiddleware
+    : clerkMiddleware(async (auth, req) => {
   if (isPublic(req)) return NextResponse.next();
   await auth.protect();
   return NextResponse.next();
 });
+
+export default middleware;
 
 export const config = {
   matcher: [
