@@ -15,7 +15,7 @@
     "@gcir/db": "workspace:*",
     "@gcir/scoring": "workspace:*",
     "@gcir/shared": "workspace:*",
-    "@perplexity-ai/perplexity_ai": "^0.6.1",
+    "@perplexity-ai/perplexity_ai": "^0.27.0",
     "openai": "^4.71.0",
     "zod": "^3.23.8"
   },
