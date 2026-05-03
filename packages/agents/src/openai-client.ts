@@ -9,9 +9,11 @@
 import OpenAI from "openai";
 import { z, type ZodSchema, type ZodTypeDef } from "zod";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let _client: OpenAI | undefined;
+function getClient() {
+  if (!_client) _client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return _client;
+}
 
 export const MODEL = process.env.AGENT_MODEL_ID ?? "gpt-5.4";
 export const FALLBACK_MODEL = process.env.AGENT_MODEL_FALLBACK ?? "gpt-5.2";
@@ -42,7 +44,7 @@ export async function structured<T>(
   const start = Date.now();
   const model = args.model ?? MODEL;
 
-  const response = await client.responses.create({
+  const response = await getClient().responses.create({
     model,
     input: [
       { role: "system", content: args.systemPrompt },
