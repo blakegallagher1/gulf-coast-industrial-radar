@@ -10,13 +10,19 @@ export function FilterRail({
   setCorridorFilter,
   bandFilter,
   setBandFilter,
+  visibleCount: _visibleCount,
+  visibleProjectIds: _visibleProjectIds,
 }: {
   projects: RadarProject[];
   corridorFilter: Set<string>;
   setCorridorFilter: (s: Set<string>) => void;
   bandFilter: Set<ScoreBand>;
   setBandFilter: (s: Set<ScoreBand>) => void;
+  visibleCount?: number;
+  visibleProjectIds?: string[];
 }) {
+  void _visibleCount;
+  void _visibleProjectIds;
   function toggle<T>(set: Set<T>, key: T, setter: (s: Set<T>) => void) {
     const next = new Set(set);
     if (next.has(key)) next.delete(key);

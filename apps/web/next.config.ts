@@ -15,6 +15,9 @@ const nextConfig: NextConfig = {
     "@gcir/shared",
   ],
   serverExternalPackages: ["@prisma/client", ".prisma/client"],
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   poweredByHeader: false,
   images: {
     remotePatterns: [

@@ -31,7 +31,7 @@ export async function deepenEvidence(rawDocumentId: string): Promise<void> {
     sourceRunId: doc.sourceRunId ?? undefined,
     url: doc.url,
     bytes: buf,
-    mimeType: ct,
+    mimeType: ct ?? "application/octet-stream",
     title: doc.title ?? undefined,
     documentDate: doc.documentDate ?? undefined,
     metadata: { ...((doc.metadata as object) ?? {}), deepenedFrom: doc.id },

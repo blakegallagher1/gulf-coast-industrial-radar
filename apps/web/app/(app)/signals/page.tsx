@@ -86,9 +86,9 @@ export default function SignalsReference() {
                 w · {SIGNAL_WEIGHTS[fam]}
               </span>
             </header>
-            <p className="mb-2.5 text-[13px] leading-relaxed text-ink-3">{DESC[fam].what}</p>
+            <p className="mb-2.5 text-[13px] leading-relaxed text-ink-3">{DESC[fam]?.what}</p>
             <p className="text-[12px] leading-snug text-muted">
-              <strong className="font-semibold text-ink-2">Watches:</strong> {DESC[fam].watches}
+              <strong className="font-semibold text-ink-2">Watches:</strong> {DESC[fam]?.watches}
             </p>
           </article>
         ))}
