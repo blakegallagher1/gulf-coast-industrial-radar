@@ -12,6 +12,7 @@
     "research:all": "tsx ./scripts/research-sources.ts"
   },
   "dependencies": {
+    "@gcir/adapters": "workspace:*",
     "@gcir/db": "workspace:*",
     "@gcir/scoring": "workspace:*",
     "@gcir/shared": "workspace:*",
