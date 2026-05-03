@@ -81,7 +81,7 @@ function _tryHydrationBlob(html: string): unknown | null {
     html.match(/<script[^>]*data-search-state[^>]*>([\s\S]+?)<\/script>/i);
   if (!m) return null;
   try {
-    return JSON.parse(m[1]);
+    return JSON.parse(m[1] ?? "");
   } catch {
     return null;
   }
@@ -117,10 +117,10 @@ function parseImsListings(html: string): ImsRow[] {
   const tableMatch = html.match(/<table[^>]*class="[^"]*ims[^"]*"[^>]*>([\s\S]*?)<\/table>/i);
   if (!tableMatch) return out;
 
-  const rows = tableMatch[1].split(/<tr[^>]*>/i).slice(1);
+  const rows = tableMatch[1]!.split(/<tr[^>]*>/i).slice(1);
   for (const r of rows) {
     const cols = Array.from(r.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)).map((m) =>
-      stripTags(m[1]).trim(),
+      stripTags(m[1] ?? "").trim(),
     );
     if (cols.length < 4) continue;
     out.push({

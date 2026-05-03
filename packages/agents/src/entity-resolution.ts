@@ -76,11 +76,14 @@ export async function runEntityResolution(input: ResolveInput = {}): Promise<Res
     if (ids.length < 2) continue;
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
+        const fromId = ids[i];
+        const toId = ids[j];
+        if (!fromId || !toId) continue;
         try {
           await prisma.entityLink.create({
             data: {
-              fromId: ids[i],
-              toId: ids[j],
+              fromId,
+              toId,
               relationship: EntityRelationship.SHARES_REGISTERED_AGENT,
               confidence: 1.0,
               detectedBy: "deterministic",
