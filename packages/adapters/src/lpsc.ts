@@ -80,7 +80,7 @@ function parseDockets(html: string): LpscRow[] {
   const rows = html.split(/<tr[^>]*>/i).slice(1);
   for (const r of rows) {
     const cells = Array.from(r.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)).map((m) =>
-      m[1].replace(/<[^>]+>/g, "").trim(),
+      (m[1] ?? "").replace(/<[^>]+>/g, "").trim(),
     );
     if (cells.length < 3) continue;
     const docket = cells[0] ?? "";

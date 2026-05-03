@@ -3,7 +3,25 @@
  *
  * Schema reference: packages/adapters/src/research/usace-mvn.md
  *
- * Phase 3.1 hardening notes:
+ * !! PAUSED — Akamai WAF block (HTTP 403) !!
+ *
+ *   As of 2026-05-02 the site is protected by Akamai GHost CDN/WAF and
+ *   returns HTTP 403 "Access Denied" for ALL non-browser requests, regardless
+ *   of User-Agent. This is infrastructure-level bot filtering, not a header
+ *   issue. Switching to a browser UA did not help.
+ *
+ *   The source record in the database has been set to status: PAUSED.
+ *   To re-enable, one of the following mitigations is needed:
+ *     a) Use a headless browser (Playwright) with a real browser fingerprint, or
+ *     b) Poll the RSS feed instead (orange RSS button on the notices page — URL
+ *        likely https://www.mvn.usace.army.mil/rss/notices.aspx or similar), or
+ *     c) Consume USACE public notices via the Permit Application Manager (PAM)
+ *        API if/when USACE opens a public API surface.
+ *
+ *   Confirmed via: curl -v returns "server: AkamaiGHost" + 403 with
+ *   Reference #18.e8b219b8.1777793972.3959bd2d
+ *
+ * Phase 3.1 hardening notes (original):
  *   - Primary URL confirmed: https://www.mvn.usace.army.mil/Missions/Regulatory/Public-Notices/
  *   - Section 408-specific URL confirmed:
  *     https://www.mvn.usace.army.mil/Missions/Section-408/Public-Notices/
@@ -18,7 +36,8 @@
  *   - Pagination: notices are organised by year (e.g. /Public-Notices/2026/);
  *     the current implementation only scrapes the main listing page.
  *     TODO(phase3.1): paginate back across prior years if needed.
- *   - No auth, no rate-limit observed, no anti-bot observed on static site.
+ *   - No auth, no rate-limit observed on static site (research from Apr 30 2026;
+ *     Akamai WAF was added subsequently).
  *
  * Source: https://www.mvn.usace.army.mil/Missions/Regulatory/Public-Notices/
  * Section 10, 404, 408, NEPA, regulatory notices for the lower Mississippi.
@@ -54,8 +73,9 @@ export const usaceMvnAdapter: SourceAdapter = {
     );
 
     const records: AdapterRecord[] = items.slice(0, 50).map((m) => {
-      const link = m[1].startsWith("http") ? m[1] : BASE + m[1];
-      const title = decode(m[2].trim());
+      const rawLink = m[1] ?? "";
+      const link = rawLink.startsWith("http") ? rawLink : BASE + rawLink;
+      const title = decode((m[2] ?? "").trim());
       return {
         externalId: link,
         family: "ENVIRONMENTAL_PERMIT",

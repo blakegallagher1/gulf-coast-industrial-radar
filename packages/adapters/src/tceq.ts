@@ -90,7 +90,7 @@ function parsePending(html: string): TceqRow[] {
   const rows = html.split(/<tr[^>]*>/i).slice(1);
   for (const r of rows) {
     const cells = Array.from(r.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)).map((m) =>
-      m[1].replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&#160;/g, " ").trim(),
+      (m[1] ?? "").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&#160;/g, " ").trim(),
     );
     if (cells.length < 3) continue;
     // Filter alphabetical-index and "Back to top" noise rows.

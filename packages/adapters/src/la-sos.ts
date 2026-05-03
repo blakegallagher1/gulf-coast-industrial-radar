@@ -108,10 +108,10 @@ function parseSosResults(html: string): SosRow[] {
   const tableMatch = html.match(/<table[^>]*id="[^"]*gvResults[^"]*"[^>]*>([\s\S]*?)<\/table>/i);
   if (!tableMatch) return [];
   const rows: SosRow[] = [];
-  const trs = tableMatch[1].split(/<tr[^>]*>/i).slice(2); // skip header
+  const trs = tableMatch[1]!.split(/<tr[^>]*>/i).slice(2); // skip header
   for (const tr of trs) {
     const cells = Array.from(tr.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)).map((m) =>
-      m[1].replace(/<[^>]+>/g, "").trim(),
+      (m[1] ?? "").replace(/<[^>]+>/g, "").trim(),
     );
     if (cells.length < 3) continue;
     const name = cells[0] ?? "";

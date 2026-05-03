@@ -1,8 +1,9 @@
+import { cache } from "react";
 import { prisma } from "@gcir/db";
 
 export type Plan = "free" | "pro";
 
-export async function getPlan(clerkId: string | null): Promise<Plan> {
+export const getPlan = cache(async (clerkId: string | null): Promise<Plan> => {
   if (!clerkId) return "free";
 
   const user = await prisma.user.findFirst({
@@ -18,4 +19,4 @@ export async function getPlan(clerkId: string | null): Promise<Plan> {
   }
 
   return "pro";
-}
+});

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@gcir/db";
 import { requireUser } from "../../../_lib/require-user";
+import { sendEmail } from "@/lib/resend";
+import { renderBriefEmail } from "@/lib/brief-email";
 
 type PublishBody = {
   emails?: string[];
@@ -66,6 +68,35 @@ export async function POST(
       }),
     ),
   ]);
+
+  if (newEmails.length > 0) {
+    const fullBrief = await prisma.brief.findUnique({
+      where: { id },
+      select: { title: true, narrative: true, topMovers: true },
+    });
+
+    if (fullBrief) {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://gulf-coast-industrial-radar.vercel.app";
+      const movers = (fullBrief.topMovers as any[]) ?? [];
+      const { subject, html } = renderBriefEmail({
+        briefId: id,
+        title: fullBrief.title,
+        topMovers: movers,
+        narrative: fullBrief.narrative,
+        appUrl,
+      });
+
+      for (const email of newEmails) {
+        const sent = await sendEmail({ to: email, subject, html });
+        if (sent) {
+          await prisma.briefRecipient.updateMany({
+            where: { briefId: id, email },
+            data: { sentAt: new Date() },
+          });
+        }
+      }
+    }
+  }
 
   return NextResponse.json({
     ok: true,
