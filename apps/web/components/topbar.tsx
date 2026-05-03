@@ -5,15 +5,26 @@ import { Bell, Eye, Radar, Search, Settings as SettingsIcon } from "lucide-react
 import { UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/cn";
 
+const authDisabled = process.env.NEXT_PUBLIC_DISABLE_AUTH === "true";
+const hasClerkKey = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
 const NAV = [
   { href: "/radar", label: "Radar" },
+  { href: "/alerts", label: "Alerts" },
   { href: "/briefs", label: "Weekly Brief" },
+  { href: "/proof", label: "Proof" },
   { href: "/signals", label: "Signals" },
   { href: "/sources", label: "Sources" },
   { href: "/watchlists", label: "Watchlists" },
 ] as const;
 
-export function Topbar() {
+export function Topbar({
+  watchlistCount = 0,
+  plan = "free",
+}: {
+  watchlistCount?: number;
+  plan?: "free" | "pro";
+}) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -26,7 +37,7 @@ export function Topbar() {
         </div>
         <span className="text-[14px]">
           Gulf Coast Industrial Radar
-          <span className="ml-1.5 text-[12.5px] font-normal text-muted-2">/ private beta</span>
+          <span className="ml-1.5 text-[12.5px] font-normal text-muted-2">/ beta</span>
         </span>
       </div>
 
@@ -50,7 +61,6 @@ export function Topbar() {
           "mx-auto flex h-[34px] max-w-[520px] flex-1 cursor-text items-center gap-2 rounded-md border border-line bg-bg-2 px-3 text-[13px] text-muted transition-colors hover:border-stone-300",
         )}
         onClick={() => {
-          /* command palette is wired in radar page */
           window.dispatchEvent(new CustomEvent("gcir:cmd"));
         }}
       >
@@ -66,21 +76,46 @@ export function Topbar() {
       <div className="ml-auto flex items-center gap-2">
         <button className="gcir-pill" title="Watchlists tracking corridors">
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-          <Eye className="h-3 w-3" /> 13 watching
+          <Eye className="h-3 w-3" /> {watchlistCount} watching
         </button>
+        <span className={cn(
+          "inline-flex h-[22px] items-center rounded-full px-2 text-[10.5px] font-semibold uppercase tracking-wider",
+          plan === "pro"
+            ? "bg-accent/10 text-accent"
+            : "bg-bg-3 text-muted"
+        )}>
+          {plan === "pro" ? "Pro" : "Free"}
+        </span>
         <button className="gcir-icon-btn" title="Notifications">
           <Bell className="h-4 w-4" strokeWidth={1.6} />
         </button>
         <button className="gcir-icon-btn" title="Settings">
           <SettingsIcon className="h-4 w-4" strokeWidth={1.6} />
         </button>
-        <UserButton
-          appearance={{
-            elements: {
-              avatarBox: "h-[30px] w-[30px]",
-            },
-          }}
-        />
+        {plan === "pro" && (
+          <button
+            className="rounded-md px-2 py-1 text-[11px] font-medium text-muted transition-colors hover:bg-bg-3 hover:text-ink"
+            title="Manage billing"
+            onClick={async () => {
+              const res = await fetch("/api/stripe/portal");
+              const body = await res.json();
+              if (body.url) window.location.href = body.url;
+            }}
+          >
+            Billing
+          </button>
+        )}
+        {authDisabled || !hasClerkKey ? (
+          <div className="h-[30px] w-[30px] rounded-full border border-line bg-bg-2" />
+        ) : (
+          <UserButton
+            appearance={{
+              elements: {
+                avatarBox: "h-[30px] w-[30px]",
+              },
+            }}
+          />
+        )}
       </div>
     </header>
   );

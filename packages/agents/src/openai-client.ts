@@ -52,7 +52,7 @@ export async function structured<T>(
       format: {
         type: "json_schema",
         name: args.schemaName,
-        schema: zodToJsonSchema(args.schema),
+        schema: zodToJsonSchema(args.schema) as Record<string, unknown>,
         strict: true,
       },
     },

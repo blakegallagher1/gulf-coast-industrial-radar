@@ -25,7 +25,9 @@ export const sources = [
     url: "https://opportunitylouisiana.gov",
     cadence: SourceCadence.DAILY,
     accessMethod: AccessMethod.HTTP_API,
-    status: SourceStatus.ACTIVE,
+    // 2026-05-01 live probe: public pages are JS-rendered and current adapter
+    // returns zero records. Keep out of ACTIVE until the feed is productive.
+    status: SourceStatus.DEGRADED,
   },
   {
     slug: "la-itep",
@@ -36,7 +38,8 @@ export const sources = [
     url: "https://opportunitylouisiana.gov",
     cadence: SourceCadence.WEEKLY,
     accessMethod: AccessMethod.HTML_SCRAPE,
-    status: SourceStatus.ACTIVE,
+    // No stable anonymous structured endpoint has been identified.
+    status: SourceStatus.TODO,
   },
   {
     slug: "la-bd-ci",
@@ -47,7 +50,8 @@ export const sources = [
     url: "https://www.opportunitylouisiana.com",
     cadence: SourceCadence.MONTHLY,
     accessMethod: AccessMethod.PDF_AGENDA,
-    status: SourceStatus.ACTIVE,
+    // Meeting artifacts are public, but no productive parser is implemented.
+    status: SourceStatus.TODO,
   },
   {
     slug: "ldeq-edms",
@@ -71,7 +75,8 @@ export const sources = [
     url: "https://www.mvn.usace.army.mil",
     cadence: SourceCadence.DAILY,
     accessMethod: AccessMethod.HTML_SCRAPE,
-    status: SourceStatus.ACTIVE,
+    // 2026-05-01 live probe: current public notices URL returns HTTP 403.
+    status: SourceStatus.DEGRADED,
   },
   {
     slug: "lpsc",
@@ -82,7 +87,8 @@ export const sources = [
     url: "https://lpscpubvalence.lpsc.louisiana.gov",
     cadence: SourceCadence.DAILY,
     accessMethod: AccessMethod.HTML_SCRAPE,
-    status: SourceStatus.ACTIVE,
+    // Current HTML parser reaches the portal but produces no docket records.
+    status: SourceStatus.DEGRADED,
   },
   {
     slug: "la-sos",
@@ -93,7 +99,8 @@ export const sources = [
     url: "https://coraweb.sos.la.gov",
     cadence: SourceCadence.DAILY,
     accessMethod: AccessMethod.HTML_SCRAPE,
-    status: SourceStatus.ACTIVE,
+    // Entity search is CAPTCHA/session gated; adapter is non-productive.
+    status: SourceStatus.DEGRADED,
   },
   {
     slug: "ascension-assessor",
@@ -151,7 +158,8 @@ export const sources = [
     url: "https://comptroller.texas.gov",
     cadence: SourceCadence.MONTHLY,
     accessMethod: AccessMethod.HTML_SCRAPE,
-    status: SourceStatus.ACTIVE,
+    // No scrape-safe public listing endpoint has been identified.
+    status: SourceStatus.TODO,
   },
   {
     slug: "sec-edgar",
@@ -173,7 +181,8 @@ export const sources = [
     url: "https://elibrary.ferc.gov",
     cadence: SourceCadence.DAILY,
     accessMethod: AccessMethod.HTML_SCRAPE,
-    status: SourceStatus.ACTIVE,
+    // No stable anonymous machine-readable feed is wired yet.
+    status: SourceStatus.TODO,
   },
   {
     slug: "sam-gov",
@@ -184,7 +193,8 @@ export const sources = [
     url: "https://api.sam.gov",
     cadence: SourceCadence.DAILY,
     accessMethod: AccessMethod.HTTP_API,
-    status: SourceStatus.ACTIVE,
+    // Productive only when SAM_GOV_API_KEY is configured.
+    status: SourceStatus.DEGRADED,
   },
   {
     slug: "emma-msrb",
@@ -210,7 +220,8 @@ export const sources = [
     url: "https://www.doa.la.gov/doa/sbc",
     cadence: SourceCadence.WEEKLY,
     accessMethod: AccessMethod.PDF_AGENDA,
-    status: SourceStatus.ACTIVE,
+    // Public agendas exist, but no machine-readable agenda parser is wired.
+    status: SourceStatus.TODO,
   },
 ] as const;
 

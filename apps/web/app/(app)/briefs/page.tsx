@@ -1,10 +1,28 @@
 import { prisma } from "@gcir/db";
+import { auth } from "@clerk/nextjs/server";
+import { getPlan } from "@/lib/plan";
+import { UpgradeGate } from "@/components/upgrade-gate";
 import Link from "next/link";
 import { fmtDate } from "@/lib/format";
+import { GenerateBriefButton } from "./generate-brief-button";
 
 export const dynamic = "force-dynamic";
 
 export default async function BriefsIndex() {
+  const session = await auth().catch(() => null);
+  const plan = await getPlan(session?.userId ?? null);
+
+  if (plan === "free") {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8">
+        <UpgradeGate
+          feature="Weekly Briefs"
+          description="Every Monday, an AI-generated analyst brief covers the top movers, new formations, and recommended actions across the Gulf Coast corridor. Upgrade to receive the full brief."
+        />
+      </div>
+    );
+  }
+
   const briefs = await prisma.brief.findMany({
     orderBy: { issueNumber: "desc" },
     take: 20,
@@ -24,8 +42,11 @@ export default async function BriefsIndex() {
 
       <ul className="divide-y divide-line">
         {briefs.length === 0 && (
-          <li className="py-10 text-center text-sm text-muted">
-            No briefs yet. The first issue is generated automatically every Monday at 06:00.
+          <li className="flex flex-col items-center gap-4 py-10 text-center text-sm text-muted">
+            <p>
+              No briefs yet. Generate the first issue now, then keep the Monday 06:00 schedule for recurring drafts.
+            </p>
+            <GenerateBriefButton />
           </li>
         )}
         {briefs.map((b) => (
@@ -42,9 +63,35 @@ export default async function BriefsIndex() {
                   <div className="mt-0.5 text-[18px] font-semibold leading-snug tracking-tight text-ink">
                     {b.title}
                   </div>
+                  {(() => {
+                    const sourceHealth =
+                      b.sourceHealth &&
+                      typeof b.sourceHealth === "object" &&
+                      !Array.isArray(b.sourceHealth)
+                        ? (b.sourceHealth as {
+                            followedWatchlists?: Array<{ name: string }>;
+                            watchlistFocus?: Array<{ watchlistName: string }>;
+                          })
+                        : null;
+                    const linkedWatchlists = sourceHealth?.followedWatchlists?.length ?? 0;
+                    const focusCount = sourceHealth?.watchlistFocus?.length ?? 0;
+                    return (
+                      <div className="mt-1.5 flex flex-wrap gap-2 text-[11.5px] text-muted">
+                        <span className="rounded-full border border-line px-2 py-1 font-mono">
+                          {b.publishedAt ? "published" : "draft"}
+                        </span>
+                        <span className="rounded-full border border-line px-2 py-1 font-mono">
+                          linked watchlists {linkedWatchlists}
+                        </span>
+                        <span className="rounded-full border border-line px-2 py-1 font-mono">
+                          focus priorities {focusCount}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="font-mono text-[11.5px] text-muted">
-                  {b.publishedAt ? "published" : "draft"}
+                  {b.publishedAt ? fmtDate(b.publishedAt) : "unpublished"}
                 </div>
               </div>
             </Link>

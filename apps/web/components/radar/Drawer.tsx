@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { Eye, FileText, MapPin, Share2, Sparkles } from "lucide-react";
-import { ScoreChip } from "@/components/score-chip";
+import { BookmarkPlus, FileText, MapPin, Share2, Sparkles } from "lucide-react";
 import { fmtAcres, fmtAge, fmtDate } from "@/lib/format";
+import { UpgradeGate } from "@/components/upgrade-gate";
 import { SummaryTab } from "./tabs/SummaryTab";
 import { TimelineTab } from "./tabs/TimelineTab";
 import { ParcelsTab } from "./tabs/ParcelsTab";
@@ -26,9 +27,74 @@ type TabId = (typeof TABS)[number]["id"];
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-export function Drawer({ project }: { project: RadarProject | null }) {
+export function Drawer({ project, plan = "free" }: { project: RadarProject | null; plan?: "free" | "pro" }) {
   const [tab, setTab] = useState<TabId>("summary");
-  useEffect(() => setTab("summary"), [project?.id]);
+  const [watchPending, setWatchPending] = useState(false);
+  const [watchError, setWatchError] = useState<string | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    setTab("summary");
+    setWatchPending(false);
+    setWatchError(null);
+  }, [project?.id]);
+
+  const shareUrl = useMemo(() => {
+    if (!project) return null;
+    if (typeof window === "undefined") return null;
+    return `${window.location.origin}/share/project/${project.id}`;
+  }, [project]);
+
+  const shareProject = async () => {
+    if (!shareUrl) return;
+    const payload = {
+      title: project!.name,
+      text: `${project!.name} — Formation Score ${project!.score}`,
+      url: shareUrl,
+    };
+    try {
+      if (typeof navigator.share === "function") {
+        await navigator.share(payload);
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+      }
+    } catch {
+      // share is best-effort
+    }
+  };
+
+  const saveWatchlist = async () => {
+    if (!project || watchPending) return;
+
+    setWatchPending(true);
+    setWatchError(null);
+
+    try {
+      const res = await fetch("/api/watchlists", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          isShared: true,
+        }),
+      });
+      const body = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string; watchlistId?: string }
+        | null;
+
+      if (!res.ok || !body?.watchlistId) {
+        setWatchError(body?.error ?? "Could not save watchlist.");
+        return;
+      }
+
+      router.push(`/watchlists/${body.watchlistId}`);
+      router.refresh();
+    } catch {
+      setWatchError("Could not save watchlist.");
+    } finally {
+      setWatchPending(false);
+    }
+  };
 
   const { data: detail } = useSWR(
     project ? `/api/projects/${project.id}` : null,
@@ -44,7 +110,7 @@ export function Drawer({ project }: { project: RadarProject | null }) {
 
   if (!project) {
     return (
-      <aside className="flex w-[var(--drawer-w)] flex-shrink-0 flex-col border-l border-line bg-white">
+      <aside className="flex w-[var(--drawer-w)] flex-shrink-0 flex-col border-l border-line bg-white max-md:hidden">
         <div className="m-auto p-8 text-center text-sm text-muted">
           Select an alert to inspect.
         </div>
@@ -53,10 +119,12 @@ export function Drawer({ project }: { project: RadarProject | null }) {
   }
 
   return (
-    <aside className="flex w-[var(--drawer-w)] flex-shrink-0 flex-col overflow-hidden border-l border-line bg-white">
+    <aside className="flex w-[var(--drawer-w)] flex-shrink-0 flex-col overflow-hidden border-l border-line bg-white max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:z-40 max-md:h-[70vh] max-md:w-full max-md:rounded-t-xl max-md:border-l-0 max-md:border-t max-md:shadow-lg">
       <header className="border-b border-line-2 px-5 py-3.5">
         <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
-          <span>Project · {detail?.status ?? project.score >= 95 ? "confirmed" : "suspected"}</span>
+          <span>
+            Project · {detail?.status ?? (project.score >= 95 ? "confirmed" : "suspected")}
+          </span>
           <span className="text-stone-300">/</span>
           <span>{headerSubject}</span>
           <span className="text-stone-300">/</span>
@@ -128,16 +196,23 @@ export function Drawer({ project }: { project: RadarProject | null }) {
         </div>
 
         <div className="mt-3 flex gap-2">
-          <button className="gcir-btn-primary">
+          <button className="gcir-btn-primary" onClick={() => router.push("/briefs")}>
             <Sparkles className="h-3.5 w-3.5" /> Generate brief
           </button>
-          <button className="gcir-btn">
-            <Eye className="h-3.5 w-3.5" /> Watch
+          <button className="gcir-btn" onClick={saveWatchlist} disabled={watchPending}>
+            <BookmarkPlus className="h-3.5 w-3.5" /> {watchPending ? "Saving..." : "Save watchlist"}
           </button>
-          <button className="gcir-btn">
-            <Share2 className="h-3.5 w-3.5" /> Share
-          </button>
+          {plan === "pro" ? (
+            <button className="gcir-btn" onClick={shareProject}>
+              <Share2 className="h-3.5 w-3.5" /> Share
+            </button>
+          ) : (
+            <button className="gcir-btn opacity-50" title="Upgrade to Pro to share">
+              <Share2 className="h-3.5 w-3.5" /> Share
+            </button>
+          )}
         </div>
+        {watchError && <div className="mt-2 text-[12px] text-crit">{watchError}</div>}
       </header>
 
       <div className="scrollbar-thin flex gap-0 overflow-x-auto border-b border-line bg-white px-5">
@@ -155,11 +230,11 @@ export function Drawer({ project }: { project: RadarProject | null }) {
 
       <div className="scrollbar-thin flex-1 overflow-y-auto px-5 pb-8 pt-4">
         {tab === "summary" && <SummaryTab project={project} detail={detail} />}
-        {tab === "timeline" && <TimelineTab projectId={project.id} />}
-        {tab === "parcels" && <ParcelsTab projectId={project.id} project={project} />}
-        {tab === "entities" && <EntitiesTab projectId={project.id} />}
-        {tab === "evidence" && <EvidenceTab projectId={project.id} />}
-        {tab === "actions" && <ActionsTab projectId={project.id} />}
+        {tab === "timeline" && (plan === "pro" ? <TimelineTab projectId={project.id} /> : <UpgradeGate feature="Signal Timeline" description="See every signal as it arrives — permit filings, entity formations, land transfers, and more." />)}
+        {tab === "parcels" && (plan === "pro" ? <ParcelsTab projectId={project.id} project={project} /> : <UpgradeGate feature="Parcels & Site Analysis" description="View individual parcels, ownership chains, acreage, and site geometry." />)}
+        {tab === "entities" && (plan === "pro" ? <EntitiesTab projectId={project.id} /> : <UpgradeGate feature="Entity Graph" description="Map the LLCs, individuals, and corporate relationships behind each project." />)}
+        {tab === "evidence" && (plan === "pro" ? <EvidenceTab projectId={project.id} /> : <UpgradeGate feature="Evidence Archive" description="Access the original permits, filings, and public records backing each signal." />)}
+        {tab === "actions" && (plan === "pro" ? <ActionsTab projectId={project.id} /> : <UpgradeGate feature="Recommended Actions" description="Get AI-generated next moves tailored to your role — investor, developer, engineer, or construction." />)}
       </div>
     </aside>
   );

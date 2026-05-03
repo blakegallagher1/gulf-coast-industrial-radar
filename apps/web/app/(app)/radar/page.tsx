@@ -1,12 +1,30 @@
 import { prisma } from "@gcir/db";
 import { scoreBand } from "@gcir/shared";
 import type { Metadata } from "next";
+import { auth } from "@clerk/nextjs/server";
+import { getPlan } from "@/lib/plan";
 import { RadarShell } from "@/components/radar/RadarShell";
+import { UsageEventTracker } from "@/components/usage-event-tracker";
 
 export const metadata: Metadata = { title: "Radar" };
 export const dynamic = "force-dynamic";
 
-export default async function RadarPage() {
+function resolveSearchParam(
+  value: string | string[] | undefined,
+): string | null {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0]?.trim() ? value[0].trim() : null;
+  return value.trim() || null;
+}
+
+export default async function RadarPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>> | Record<string, string | string[] | undefined>;
+}) {
+  const resolvedParams = await Promise.resolve(searchParams);
+  const initialProjectId = resolveSearchParam(resolvedParams.projectId);
+
   const [projects, sourcesAgg] = await Promise.all([
     prisma.project.findMany({
       where: { status: "suspected" },
@@ -45,10 +63,25 @@ export default async function RadarPage() {
   const degraded = sourcesAgg.filter((s) => s.status === "DEGRADED").length;
   const totalSources = sourcesAgg.length;
 
+  const session = await auth().catch(() => null);
+  const plan = await getPlan(session?.userId ?? null);
+
   return (
-    <RadarShell
-      projects={enriched}
-      health={{ ok, degraded, total: totalSources }}
-    />
+    <>
+      <UsageEventTracker
+        eventType="page_view"
+        surface="radar"
+        targetType={initialProjectId ? "project" : undefined}
+        targetId={initialProjectId ?? undefined}
+        metadata={{ projectCount: enriched.length }}
+      />
+      <RadarShell
+        projects={enriched}
+        sources={sourcesAgg.map((s) => ({ slug: s.name, status: s.status }))}
+        health={{ ok, degraded, total: totalSources }}
+        initialProjectId={initialProjectId ?? undefined}
+        plan={plan}
+      />
+    </>
   );
 }

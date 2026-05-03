@@ -13,6 +13,8 @@ export type SourceWatchInput = {
   sourceSlug: string;
   /** Optional override window. Defaults to 14 days. */
   sinceDays?: number;
+  /** Optional page cap for health checks and very large public parcel feeds. */
+  maxPages?: number;
 };
 
 export type SourceWatchOutput = {
@@ -26,7 +28,16 @@ export async function runSourceWatch(input: SourceWatchInput): Promise<SourceWat
   const adapter = adapters[input.sourceSlug];
   if (!adapter) throw new Error(`SourceWatcher: no adapter registered for ${input.sourceSlug}`);
 
-  const source = await prisma.source.findUnique({ where: { slug: input.sourceSlug } });
+  const source = await prisma.source.findUnique({
+    where: { slug: input.sourceSlug },
+    include: {
+      runs: {
+        where: { status: "ok" },
+        orderBy: { startedAt: "desc" },
+        take: 1,
+      },
+    },
+  });
   if (!source) throw new Error(`SourceWatcher: Source row missing for ${input.sourceSlug} (run db:seed)`);
 
   const since = new Date();
@@ -37,12 +48,14 @@ export async function runSourceWatch(input: SourceWatchInput): Promise<SourceWat
   });
 
   let allRecords: AdapterRecord[] = [];
-  let cursor: unknown = source.lastRunAt ? null : undefined;
+  let cursor: unknown = source.runs[0]?.cursor ?? (source.lastRunAt ? null : undefined);
+  let nextCursor: unknown = null;
   let pages = 0;
   let notes: string[] = [];
+  const maxPages = input.maxPages ?? 25;
 
   try {
-    while (pages < 25) {
+    while (pages < maxPages) {
       const result = await adapter.run({
         sourceId: source.id,
         sourceRunId: run.id,
@@ -51,8 +64,9 @@ export async function runSourceWatch(input: SourceWatchInput): Promise<SourceWat
       });
       allRecords = allRecords.concat(result.records);
       if (result.notes) notes.push(result.notes);
-      if (!result.nextCursor) break;
-      cursor = result.nextCursor;
+      nextCursor = result.nextCursor ?? null;
+      if (!nextCursor) break;
+      cursor = nextCursor;
       pages++;
     }
   } catch (err) {
@@ -66,7 +80,7 @@ export async function runSourceWatch(input: SourceWatchInput): Promise<SourceWat
     });
     await prisma.source.update({
       where: { id: source.id },
-      data: { lastError: (err as Error).message, lastRunAt: new Date() },
+      data: { lastError: (err as Error).message, lastRunAt: new Date(), status: "DEGRADED" },
     });
     throw err;
   }
@@ -122,6 +136,7 @@ export async function runSourceWatch(input: SourceWatchInput): Promise<SourceWat
       status: "ok",
       recordsSeen: allRecords.length,
       recordsNew: newCount,
+      cursor: nextCursor as never,
     },
   });
   await prisma.source.update({
