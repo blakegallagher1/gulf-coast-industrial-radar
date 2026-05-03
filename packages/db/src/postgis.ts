@@ -7,14 +7,15 @@
 
 import { prisma } from "./index";
 
+type GeoJsonPosition = [number, number, ...number[]];
+type GeoJsonLinearRing = GeoJsonPosition[];
 type GeoJsonPolygon = {
   type: "Polygon";
-  coordinates: number[][][];
+  coordinates: GeoJsonLinearRing[];
 };
-
 type GeoJsonMultiPolygon = {
   type: "MultiPolygon";
-  coordinates: number[][][][];
+  coordinates: GeoJsonLinearRing[][];
 };
 
 /** Convert a GeoJSON polygon / multipolygon to PostGIS geometry text. */
@@ -33,7 +34,7 @@ export async function setParcelGeometry(
       : { type: "MultiPolygon", coordinates: [geojson.coordinates] },
   );
   await prisma.$executeRawUnsafe(
-    `UPDATE "Parcel" SET geom = ST_SetSRID(ST_GeomFromGeoJSON($1), 4326) WHERE id = $2`,
+    `UPDATE "Parcel" SET geom = extensions.ST_SetSRID(extensions.ST_GeomFromGeoJSON($1), 4326) WHERE id = $2`,
     text,
     parcelId,
   );
@@ -45,7 +46,7 @@ export async function setSiteGeometry(
   geojson: GeoJsonMultiPolygon,
 ): Promise<void> {
   await prisma.$executeRawUnsafe(
-    `UPDATE "Site" SET geom = ST_SetSRID(ST_GeomFromGeoJSON($1), 4326) WHERE id = $2`,
+    `UPDATE "Site" SET geom = extensions.ST_SetSRID(extensions.ST_GeomFromGeoJSON($1), 4326) WHERE id = $2`,
     JSON.stringify(geojson),
     siteId,
   );
@@ -60,7 +61,11 @@ export async function parcelsWithinRadius(
   return prisma.$queryRawUnsafe(
     `SELECT id, "parcelNumber", acres
      FROM "Parcel"
-     WHERE ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)`,
+     WHERE extensions.ST_DWithin(
+       geom::extensions.geography,
+       extensions.ST_SetSRID(extensions.ST_MakePoint($1, $2), 4326)::extensions.geography,
+       $3
+     )`,
     lng,
     lat,
     radiusMeters,
@@ -80,7 +85,7 @@ export async function assemblageStats(parcelIds: string[]): Promise<{
     await prisma.$queryRawUnsafe(
       `SELECT
          COALESCE(SUM(acres),0)::float AS total_acres,
-         ST_AsGeoJSON(ST_ConvexHull(ST_Collect(geom)))::text AS envelope
+         extensions.ST_AsGeoJSON(extensions.ST_ConvexHull(extensions.ST_Collect(geom)))::text AS envelope
        FROM "Parcel"
        WHERE id = ANY($1::text[])`,
       parcelIds,
@@ -89,6 +94,6 @@ export async function assemblageStats(parcelIds: string[]): Promise<{
   return {
     totalAcres: r?.total_acres ?? 0,
     contiguousAcres: r?.total_acres ?? 0,
-    envelope: r?.envelope ? JSON.parse(r.envelope) : null,
+    envelope: r?.envelope ? (JSON.parse(r.envelope) as unknown as GeoJsonPolygon) : null,
   };
 }

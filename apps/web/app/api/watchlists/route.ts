@@ -43,6 +43,7 @@ export async function POST(req: Request) {
 
     const watchlist = await prisma.watchlist.create({
       data: {
+        userId: gate.userId,
         name,
         description,
         isShared: body?.isShared !== false,

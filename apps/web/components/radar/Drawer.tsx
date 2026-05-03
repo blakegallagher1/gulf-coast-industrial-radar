@@ -23,6 +23,7 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
+type DrawerTabEvent = CustomEvent<{ projectId?: string; tab?: TabId }>;
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -56,6 +57,17 @@ export function Drawer({
     setTab("summary");
     setWatchPending(false);
     setWatchError(null);
+  }, [project?.id]);
+
+  useEffect(() => {
+    const handleTabRequest = (event: Event) => {
+      const { projectId, tab: requestedTab } = (event as DrawerTabEvent).detail ?? {};
+      if (projectId !== project?.id || !requestedTab) return;
+      if (TABS.some(({ id }) => id === requestedTab)) setTab(requestedTab);
+    };
+
+    window.addEventListener("gcir:drawer-tab", handleTabRequest);
+    return () => window.removeEventListener("gcir:drawer-tab", handleTabRequest);
   }, [project?.id]);
 
   const shareUrl = useMemo(() => {

@@ -22,12 +22,36 @@ const STATUS_STYLES: Record<string, StatusStyle> = {
 export default async function SourcesPage() {
   const sources = await prisma.source.findMany({
     orderBy: [{ family: "asc" }, { name: "asc" }],
+    include: {
+      _count: {
+        select: {
+          rawDocuments: true,
+          signals: true,
+        },
+      },
+      runs: {
+        orderBy: { startedAt: "desc" },
+        take: 1,
+        select: {
+          status: true,
+          recordsSeen: true,
+          recordsNew: true,
+          errorMessage: true,
+          finishedAt: true,
+          startedAt: true,
+        },
+      },
+    },
   });
 
   const counts = sources.reduce(
     (acc, s) => ({ ...acc, [s.status]: (acc[s.status] ?? 0) + 1 }),
     {} as Record<string, number>,
   );
+  const wiredSources = sources.filter(
+    (source) => source._count.signals > 0 || (source.runs[0]?.recordsSeen ?? 0) > 0,
+  ).length;
+  const totalSignals = sources.reduce((sum, source) => sum + source._count.signals, 0);
 
   return (
     <main className="mx-auto max-w-[1180px] flex-1 overflow-y-auto px-10 py-12">
@@ -39,6 +63,25 @@ export default async function SourcesPage() {
         description={`${sources.length} sources across Louisiana, Texas, Mississippi, Alabama, Florida, and federal agencies. Provenance preserved per claim — every alert links to its raw evidence.`}
         meta="0 paid aggregators"
       />
+
+      <section className="mb-5 grid grid-cols-3 gap-3">
+        <OperationalStat
+          label="Fetching data"
+          value={`${wiredSources}/${sources.length}`}
+          detail="Sources with records or a non-empty run"
+        />
+        <OperationalStat
+          label="Signals stored"
+          value={totalSignals.toLocaleString()}
+          detail="Production records linked to provenance"
+        />
+        <OperationalStat
+          label="Needs work"
+          value={String(counts.DEGRADED ?? 0)}
+          detail="Degraded public endpoints or adapters"
+          tone="accent"
+        />
+      </section>
 
       {/* Status spec strip */}
       <section className="mb-10 grid grid-cols-2 gap-px overflow-hidden rounded-[7px] border border-line bg-line/60 sm:grid-cols-5">
@@ -53,14 +96,16 @@ export default async function SourcesPage() {
         <div className="grid grid-cols-[2.2fr_1.8fr_120px_140px_120px_140px] items-center gap-x-4 border-b border-line bg-bone-2/70 px-5 py-3 font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
           <span>Source</span>
           <span>Provides</span>
-          <span>Cadence</span>
-          <span>Last run</span>
+          <span>Records</span>
+          <span>Last result</span>
           <span>Status</span>
           <span className="text-right">Research note</span>
         </div>
 
         {sources.map((s) => {
           const styles: StatusStyle = STATUS_STYLES[s.status] ?? DEFAULT_STATUS_STYLE;
+          const latestRun = s.runs[0];
+          const lastError = latestRun?.errorMessage ?? s.lastError;
           return (
             <div
               key={s.id}
@@ -74,8 +119,23 @@ export default async function SourcesPage() {
                 <span className="capitalize">{s.family.toLowerCase().replace(/_/g, " ")}</span>
                 {s.notes && <div className="mt-0.5 line-clamp-1 text-[11.5px] text-muted">{s.notes}</div>}
               </div>
-              <div className="font-mono text-[11px] text-muted">{s.cadence.toLowerCase()}</div>
-              <div className="font-mono text-[11px] text-ink-3">{s.lastOkAt ? fmtDate(s.lastOkAt) : "—"}</div>
+              <div className="font-mono text-[11px] text-muted">
+                <div>{s._count.signals.toLocaleString()} signals</div>
+                <div className="mt-0.5 text-muted-2">{s._count.rawDocuments.toLocaleString()} docs</div>
+              </div>
+              <div className="font-mono text-[11px] text-ink-3">
+                <div>{latestRun?.finishedAt || s.lastOkAt ? fmtDate(latestRun?.finishedAt ?? s.lastOkAt!) : "—"}</div>
+                {latestRun ? (
+                  <div className="mt-0.5 text-muted">seen {latestRun.recordsSeen} · new {latestRun.recordsNew}</div>
+                ) : (
+                  <div className="mt-0.5 text-muted">{s.cadence.toLowerCase()}</div>
+                )}
+                {lastError && (
+                  <div className="mt-1 max-w-[130px] truncate text-[10px] text-accent-ink" title={lastError}>
+                    {lastError}
+                  </div>
+                )}
+              </div>
               <div>
                 <span className={`inline-flex items-center gap-1.5 rounded-[3px] px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-[0.10em] ring-1 ${styles.bg} ${styles.text} ${styles.ring}`}>
                   <span className={`h-1.5 w-1.5 rounded-full ${styles.dot}`} />
@@ -112,6 +172,28 @@ export default async function SourcesPage() {
         </div>
       </aside>
     </main>
+  );
+}
+
+function OperationalStat({
+  label,
+  value,
+  detail,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: "default" | "accent";
+}) {
+  return (
+    <div className="rounded-[6px] border border-line bg-bone px-4 py-4">
+      <div className="font-mono text-[9.5px] uppercase tracking-[0.15em] text-muted">{label}</div>
+      <div className={`mt-1 font-display text-[30px] leading-none ${tone === "accent" ? "text-accent-ink" : "text-ink"}`}>
+        {value}
+      </div>
+      <div className="mt-2 text-[11.5px] leading-snug text-muted">{detail}</div>
+    </div>
   );
 }
 

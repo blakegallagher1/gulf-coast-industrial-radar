@@ -6,12 +6,14 @@
  *   - local filesystem (dev) — controlled by EVIDENCE_LOCAL_DIR
  *   - object storage (prod) — backed by EVIDENCE_BUCKET (S3-compatible)
  *
- * For now: local always works; S3 is a stub that an adapter swap can fill.
+ * Local storage is the development fallback. S3-compatible storage is used
+ * whenever EVIDENCE_BUCKET is configured.
  */
 
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Prisma, prisma } from "@gcir/db";
 
 export type StoreEvidenceArgs = {
@@ -68,8 +70,31 @@ export async function storeEvidence(args: StoreEvidenceArgs) {
 async function writeBlob(hash: string, buf: Buffer, mime: string): Promise<string> {
   const bucket = process.env.EVIDENCE_BUCKET;
   if (bucket) {
-    // TODO: real S3 client (aws-sdk v3) — left as adapter-swap surface
-    return `s3://${bucket}/${hash}${extFromMime(mime)}`;
+    const region = process.env.EVIDENCE_REGION ?? "us-east-1";
+    const accessKeyId = process.env.EVIDENCE_ACCESS_KEY;
+    const secretAccessKey = process.env.EVIDENCE_SECRET_KEY;
+    const endpoint = process.env.EVIDENCE_ENDPOINT?.trim() || undefined;
+    const forcePathStyle = process.env.EVIDENCE_FORCE_PATH_STYLE === "true";
+    const credentials = accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined;
+
+    const client = new S3Client({
+      region,
+      endpoint,
+      forcePathStyle,
+      ...(credentials ? { credentials } : {}),
+    });
+
+    const key = `${hash.slice(0, 2)}/${hash}${extFromMime(mime)}`;
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: buf,
+        ContentType: mime,
+        ContentLength: buf.byteLength,
+      }),
+    );
+    return `s3://${bucket}/${key}`;
   }
   const dir = process.env.EVIDENCE_LOCAL_DIR ?? ".evidence-cache";
   const sub = join(dir, hash.slice(0, 2));

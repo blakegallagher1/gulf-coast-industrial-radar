@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: workspaceRoot,
   // Auth middleware lives at apps/web/middleware.ts (Next.js 16 convention).
   transpilePackages: [
+    "@gcir/worker",
     "@gcir/db",
     "@gcir/adapters",
     "@gcir/agents",

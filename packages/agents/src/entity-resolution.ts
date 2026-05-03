@@ -12,7 +12,7 @@
  */
 
 import { z } from "zod";
-import { prisma, EntityRelationship } from "@gcir/db";
+import { prisma } from "@gcir/db";
 import { callBackend } from "./agent-backend";
 
 export type ResolveInput = {
@@ -52,6 +52,10 @@ const LinkSchema = z.object({
 });
 const LinksSchema = z.object({ links: z.array(LinkSchema) });
 
+const ENTITY_RELATIONSHIP = {
+  SHARES_REGISTERED_AGENT: "SHARES_REGISTERED_AGENT",
+} as const;
+
 export async function runEntityResolution(input: ResolveInput = {}): Promise<ResolveOutput> {
   const window = input.windowDays ?? 30;
   const since = new Date();
@@ -84,7 +88,7 @@ export async function runEntityResolution(input: ResolveInput = {}): Promise<Res
             data: {
               fromId,
               toId,
-              relationship: EntityRelationship.SHARES_REGISTERED_AGENT,
+              relationship: ENTITY_RELATIONSHIP.SHARES_REGISTERED_AGENT,
               confidence: 1.0,
               detectedBy: "deterministic",
             },
@@ -135,7 +139,7 @@ export async function runEntityResolution(input: ResolveInput = {}): Promise<Res
           data: {
             fromId: a,
             toId: b,
-            relationship: link.relationship as EntityRelationship,
+            relationship: link.relationship,
             confidence: link.confidence,
             detectedBy: "agent",
           },

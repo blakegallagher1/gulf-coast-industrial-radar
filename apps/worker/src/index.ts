@@ -18,8 +18,14 @@
 
 import "dotenv/config";
 import { Cron } from "croner";
-import { prisma } from "@gcir/db";
-import {
+import * as db from "@gcir/db";
+import * as agents from "@gcir/agents";
+import { tickQlad } from "./jobs/qlad-evaluate.js";
+import { tickBudgetReport } from "./jobs/budget-report.js";
+
+const enabled = (process.env.WORKER_CRON_ENABLED ?? "false") === "true";
+const prisma = db.prisma;
+const {
   runSourceWatch,
   deepenEvidenceBatch,
   extractClaims,
@@ -28,11 +34,7 @@ import {
   rescoreAllProjects,
   recommendActions,
   writeWeeklyBrief,
-} from "@gcir/agents";
-import { tickQlad } from "./jobs/qlad-evaluate.js";
-import { tickBudgetReport } from "./jobs/budget-report.js";
-
-const enabled = (process.env.WORKER_CRON_ENABLED ?? "false") === "true";
+} = agents;
 
 async function tickSourceWatch() {
   const sources = await prisma.source.findMany({
@@ -158,4 +160,4 @@ bootstrap().catch((err) => {
 });
 
 // allow `pnpm --filter @gcir/worker exec rescore` style commands
-export { rescoreAllProjects };
+export { rescoreAllProjects, tickQlad };

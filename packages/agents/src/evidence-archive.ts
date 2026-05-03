@@ -21,7 +21,7 @@ export async function deepenEvidence(rawDocumentId: string): Promise<void> {
     timeoutMs: 45_000,
     userAgent: process.env.SEC_EDGAR_USER_AGENT ?? "GulfCoastIndustrialRadar/0.1",
   });
-  const ct = (res.headers.get("content-type") ?? "application/octet-stream").split(";")[0];
+  const ct = (res.headers.get("content-type") ?? "application/octet-stream").split(";")[0] ?? "application/octet-stream";
   const buf = Buffer.from(await res.arrayBuffer());
   if (buf.byteLength === 0) return;
 

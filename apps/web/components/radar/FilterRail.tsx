@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { CORRIDORS, type ScoreBand, BAND_LABEL, BAND_COLOR } from "@gcir/shared";
 import { cn } from "@/lib/cn";
 import type { RadarProject } from "./RadarShell";
@@ -10,8 +12,8 @@ export function FilterRail({
   setCorridorFilter,
   bandFilter,
   setBandFilter,
-  visibleCount: _visibleCount,
-  visibleProjectIds: _visibleProjectIds,
+  visibleCount: visibleCountProp,
+  visibleProjectIds = [],
 }: {
   projects: RadarProject[];
   corridorFilter: Set<string>;
@@ -21,12 +23,61 @@ export function FilterRail({
   visibleCount?: number;
   visibleProjectIds?: string[];
 }) {
-  void _visibleProjectIds;
+  const router = useRouter();
+  const [draftName, setDraftName] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
   function toggle<T>(set: Set<T>, key: T, setter: (s: Set<T>) => void) {
     const next = new Set(set);
     if (next.has(key)) next.delete(key);
     else next.add(key);
     setter(next);
+  }
+
+  async function saveWatchlist() {
+    const name = draftName.trim();
+    if (!name) {
+      setMessage("Name the watchlist before saving.");
+      return;
+    }
+
+    setIsSaving(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/watchlists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          description: `${visibleCount} alerts in current radar view`,
+          isShared: true,
+          filter: {
+            corridors: Array.from(corridorFilter),
+            scoreBands: Array.from(bandFilter),
+            alertCount: visibleCount,
+            projectIds: visibleProjectIds,
+          },
+        }),
+      });
+      const body = (await response.json().catch(() => null)) as
+        | { error?: string; watchlistId?: string; watchlist?: { id: string } }
+        | null;
+      const watchlistId = body?.watchlistId ?? body?.watchlist?.id;
+
+      if (!response.ok || !watchlistId) {
+        setMessage(body?.error ?? "Watchlist save failed.");
+        return;
+      }
+
+      setDraftName("");
+      setMessage("Saved. Opening shared watchlist.");
+      router.push(`/watchlists/${watchlistId}`);
+    } catch {
+      setMessage("Watchlist save failed.");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   const corridorCounts = new Map<string, number>();
@@ -39,7 +90,7 @@ export function FilterRail({
     (acc, p) => ({ ...acc, [p.band]: (acc[p.band] ?? 0) + 1 }),
     {} as Record<ScoreBand, number>,
   );
-  const visibleCount = _visibleCount ?? projects.length;
+  const visibleCount = visibleCountProp ?? projects.length;
   const selectedCorridors = corridorFilter.size;
   const selectedBands = bandFilter.size;
 
@@ -154,24 +205,38 @@ export function FilterRail({
         ))}
       </Section>
 
-      <Section title="Watchlists" sectionCode="§E" rightLabel="+ new">
-        {(
-          [
-            ["River corridor LNG", 7],
-            ["Hyundai-adjacent", 3],
-            ["Lake Charles 200ac+", 5],
-            ["Data-center load", 9],
-            ["EBR 50ac+ infill", 12],
-          ] as const
-        ).map(([n, c]) => (
-          <div key={n} className="gcir-rail-row">
-            <span className="flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-info" />
-              <span className="text-ink-3">{n}</span>
-            </span>
-            <span className="font-mono text-[11px] text-muted">{c}</span>
+      <Section title="Watchlists" sectionCode="§E" rightLabel="save view">
+        <div className="rounded-[5px] border border-line bg-bone px-3 py-3">
+          <div className="mb-2 text-[12px] leading-snug text-muted">
+            Save the active corridor and score-band filters as a shared operating view.
           </div>
-        ))}
+          <input
+            value={draftName}
+            onChange={(event) => setDraftName(event.target.value)}
+            placeholder="River corridor · site-control"
+            className="mb-2 block w-full rounded-[4px] border border-line bg-bone-2 px-2.5 py-2 text-[13px] outline-none ring-2 ring-transparent transition focus:ring-accent"
+          />
+          <div className="mb-2 flex flex-wrap gap-1.5 text-[10.5px]">
+            <span className="rounded-full border border-line px-2 py-0.5 font-mono text-muted">
+              {visibleCount} alerts
+            </span>
+            <span className="rounded-full border border-line px-2 py-0.5 font-mono text-muted">
+              {corridorFilter.size} corridors
+            </span>
+            <span className="rounded-full border border-line px-2 py-0.5 font-mono text-muted">
+              {bandFilter.size} score bands
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={saveWatchlist}
+            disabled={isSaving}
+            className="gcir-btn-accent w-full justify-center disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSaving ? "Saving..." : "Save shared watchlist"}
+          </button>
+          {message && <div className="mt-2 text-[11.5px] text-muted">{message}</div>}
+        </div>
       </Section>
 
       <div className="mt-auto border-t border-line px-4 py-3 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-2">
