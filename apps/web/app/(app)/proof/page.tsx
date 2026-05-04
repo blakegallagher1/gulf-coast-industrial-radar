@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { prisma } from "@gcir/db";
-
-const seededProjects: any[] = [];
+import { prisma, auroraProject, validationProjectsPart1, validationProjectsPart2 } from "@gcir/db";
 import { fmtDate } from "@/lib/format";
 import { UsageEventTracker } from "@/components/usage-event-tracker";
 import { RecoveryActions } from "./recovery-actions";
 
 export const dynamic = "force-dynamic";
+
+const seededProjects = [auroraProject, ...validationProjectsPart1, ...validationProjectsPart2];
 
 function daysBetween(start: Date | null, end: Date | null): number | null {
   if (!start || !end) return null;

@@ -16,3 +16,8 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export * from "@prisma/client";
+
+export { auroraProject } from "./seed-data/projects-aurora";
+export { validationProjectsPart1 } from "./seed-data/projects-validation-1";
+export { validationProjectsPart2 } from "./seed-data/projects-validation-2";
+export type { ProjectFixture } from "./seed-data/types";
