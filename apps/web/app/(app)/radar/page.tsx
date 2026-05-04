@@ -1,8 +1,6 @@
 import { prisma } from "@gcir/db";
 import { scoreBand } from "@gcir/shared";
 import type { Metadata } from "next";
-import { auth } from "@clerk/nextjs/server";
-import { getPlan } from "@/lib/plan";
 import { RadarShell } from "@/components/radar/RadarShell";
 import { UsageEventTracker } from "@/components/usage-event-tracker";
 
@@ -63,9 +61,6 @@ export default async function RadarPage({
   const degraded = sourcesAgg.filter((s) => s.status === "DEGRADED").length;
   const totalSources = sourcesAgg.length;
 
-  const session = await auth().catch(() => null);
-  const plan = await getPlan(session?.userId ?? null);
-
   return (
     <>
       <UsageEventTracker
@@ -80,7 +75,7 @@ export default async function RadarPage({
         sources={sourcesAgg.map((s) => ({ slug: s.name, status: s.status }))}
         health={{ ok, degraded, total: totalSources }}
         initialProjectId={initialProjectId ?? undefined}
-        plan={plan}
+        plan="pro"
       />
     </>
   );

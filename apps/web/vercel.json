@@ -1,0 +1,19 @@
+{
+  "buildCommand": "pnpm vercel-build",
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cron/source-watch",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/qlad",
+      "schedule": "*/20 * * * *"
+    },
+    {
+      "path": "/api/cron/promote-candidates",
+      "schedule": "0 * * * *"
+    }
+  ]
+}

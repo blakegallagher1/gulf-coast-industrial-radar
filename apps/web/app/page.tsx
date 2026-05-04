@@ -183,10 +183,10 @@ export default async function LandingPage() {
             <Radar className="h-3.5 w-3.5" />
             Gulf Coast Industrial Radar
             <span className="text-stone-700">·</span>
-            Built in Baton Rouge
+            brickandyield.com
           </div>
           <div className="flex items-center gap-4 text-[12.5px] text-stone-500">
-            <a href="mailto:blake@gallagherpropco.com" className="hover:text-stone-300">Contact</a>
+            <a href="mailto:blake@brickandyield.com" className="hover:text-stone-300">Contact</a>
             <Link href={"/sign-in" as any} className="hover:text-stone-300">Sign In</Link>
           </div>
         </div>

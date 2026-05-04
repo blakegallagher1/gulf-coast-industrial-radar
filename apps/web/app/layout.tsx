@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   },
   description:
     "Detect Gulf Coast industrial demand and site-control formation early enough to buy, option, entitle, sell, or avoid land before the market prices it in.",
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://brickandyield.com"),
 };
 
 function MaybeClerk({ children }: { children: React.ReactNode }) {

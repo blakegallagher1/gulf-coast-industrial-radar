@@ -1,8 +1,5 @@
 import Link from "next/link";
 import { prisma } from "@gcir/db";
-import { auth } from "@clerk/nextjs/server";
-import { getPlan } from "@/lib/plan";
-import { UpgradeGate } from "@/components/upgrade-gate";
 import { fmtDate } from "@/lib/format";
 import { ShareLinkButton } from "@/components/share-link-button";
 import { TrackedLink } from "@/components/tracked-link";
@@ -96,20 +93,6 @@ function alertLane(alert: {
 }
 
 export default async function AlertsPage() {
-  const session = await auth().catch(() => null);
-  const plan = await getPlan(session?.userId ?? null);
-
-  if (plan === "free") {
-    return (
-      <div className="flex flex-1 items-center justify-center p-8">
-        <UpgradeGate
-          feature="Alerts"
-          description="Get notified when quiet land assemblies, new permit filings, or entity formations signal a new industrial project. Upgrade to see alerts as they fire."
-        />
-      </div>
-    );
-  }
-
   const [alerts, emergingSignals, existingCandidateProjects] = await Promise.all([
     prisma.alert.findMany({
       orderBy: [{ createdAt: "desc" }],

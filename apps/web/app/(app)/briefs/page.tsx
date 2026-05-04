@@ -1,7 +1,4 @@
 import { prisma } from "@gcir/db";
-import { auth } from "@clerk/nextjs/server";
-import { getPlan } from "@/lib/plan";
-import { UpgradeGate } from "@/components/upgrade-gate";
 import Link from "next/link";
 import { fmtDate } from "@/lib/format";
 import { GenerateBriefButton } from "./generate-brief-button";
@@ -9,20 +6,6 @@ import { GenerateBriefButton } from "./generate-brief-button";
 export const dynamic = "force-dynamic";
 
 export default async function BriefsIndex() {
-  const session = await auth().catch(() => null);
-  const plan = await getPlan(session?.userId ?? null);
-
-  if (plan === "free") {
-    return (
-      <div className="flex flex-1 items-center justify-center p-8">
-        <UpgradeGate
-          feature="Weekly Briefs"
-          description="Every Monday, an AI-generated analyst brief covers the top movers, new formations, and recommended actions across the Gulf Coast corridor. Upgrade to receive the full brief."
-        />
-      </div>
-    );
-  }
-
   const briefs = await prisma.brief.findMany({
     orderBy: { issueNumber: "desc" },
     take: 20,
