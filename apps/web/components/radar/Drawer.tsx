@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { BookmarkPlus, FileText, MapPin, Share2, Sparkles } from "lucide-react";
 import { fmtAcres, fmtAge, fmtDate } from "@/lib/format";
-import { UpgradeGate } from "@/components/upgrade-gate";
 import { SummaryTab } from "./tabs/SummaryTab";
 import { TimelineTab } from "./tabs/TimelineTab";
 import { ParcelsTab } from "./tabs/ParcelsTab";
@@ -27,7 +26,7 @@ type TabId = (typeof TABS)[number]["id"];
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-export function Drawer({ project, plan = "free" }: { project: RadarProject | null; plan?: "free" | "pro" }) {
+export function Drawer({ project, plan: _plan = "pro" }: { project: RadarProject | null; plan?: "free" | "pro" }) {
   const [tab, setTab] = useState<TabId>("summary");
   const [watchPending, setWatchPending] = useState(false);
   const [watchError, setWatchError] = useState<string | null>(null);
@@ -202,15 +201,9 @@ export function Drawer({ project, plan = "free" }: { project: RadarProject | nul
           <button className="gcir-btn" onClick={saveWatchlist} disabled={watchPending}>
             <BookmarkPlus className="h-3.5 w-3.5" /> {watchPending ? "Saving..." : "Save watchlist"}
           </button>
-          {plan === "pro" ? (
-            <button className="gcir-btn" onClick={shareProject}>
-              <Share2 className="h-3.5 w-3.5" /> Share
-            </button>
-          ) : (
-            <button className="gcir-btn opacity-50" title="Upgrade to Pro to share">
-              <Share2 className="h-3.5 w-3.5" /> Share
-            </button>
-          )}
+          <button className="gcir-btn" onClick={shareProject}>
+            <Share2 className="h-3.5 w-3.5" /> Share
+          </button>
         </div>
         {watchError && <div className="mt-2 text-[12px] text-crit">{watchError}</div>}
       </header>
@@ -230,11 +223,11 @@ export function Drawer({ project, plan = "free" }: { project: RadarProject | nul
 
       <div className="scrollbar-thin flex-1 overflow-y-auto px-5 pb-8 pt-4">
         {tab === "summary" && <SummaryTab project={project} detail={detail} />}
-        {tab === "timeline" && (plan === "pro" ? <TimelineTab projectId={project.id} /> : <UpgradeGate feature="Signal Timeline" description="See every signal as it arrives — permit filings, entity formations, land transfers, and more." />)}
-        {tab === "parcels" && (plan === "pro" ? <ParcelsTab projectId={project.id} project={project} /> : <UpgradeGate feature="Parcels & Site Analysis" description="View individual parcels, ownership chains, acreage, and site geometry." />)}
-        {tab === "entities" && (plan === "pro" ? <EntitiesTab projectId={project.id} /> : <UpgradeGate feature="Entity Graph" description="Map the LLCs, individuals, and corporate relationships behind each project." />)}
-        {tab === "evidence" && (plan === "pro" ? <EvidenceTab projectId={project.id} /> : <UpgradeGate feature="Evidence Archive" description="Access the original permits, filings, and public records backing each signal." />)}
-        {tab === "actions" && (plan === "pro" ? <ActionsTab projectId={project.id} /> : <UpgradeGate feature="Recommended Actions" description="Get AI-generated next moves tailored to your role — investor, developer, engineer, or construction." />)}
+        {tab === "timeline" && <TimelineTab projectId={project.id} />}
+        {tab === "parcels" && <ParcelsTab projectId={project.id} project={project} />}
+        {tab === "entities" && <EntitiesTab projectId={project.id} />}
+        {tab === "evidence" && <EvidenceTab projectId={project.id} />}
+        {tab === "actions" && <ActionsTab projectId={project.id} />}
       </div>
     </aside>
   );

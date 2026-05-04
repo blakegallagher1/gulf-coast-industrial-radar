@@ -6,12 +6,9 @@ import {
   FileText,
   Bookmark,
   CheckCircle,
-  ArrowRight,
   Shield,
-  Zap,
   Map,
 } from "lucide-react";
-import { PricingCTA } from "./landing-pricing";
 import { EmailCapture } from "./landing-email-capture";
 
 export const dynamic = "force-dynamic";
@@ -35,13 +32,12 @@ export default async function LandingPage() {
         </div>
         <div className="flex items-center gap-5 text-[13px]">
           <a href="#features" className="text-stone-400 transition-colors hover:text-white">Features</a>
-          <a href="#pricing" className="text-stone-400 transition-colors hover:text-white">Pricing</a>
           <Link href={"/sign-in" as any} className="text-stone-400 transition-colors hover:text-white">Sign In</Link>
           <Link
             href={"/sign-up" as any}
             className="rounded-lg bg-white/10 px-4 py-1.5 font-medium text-white transition-colors hover:bg-white/20"
           >
-            Get Started Free
+            Get Access
           </Link>
         </div>
       </nav>
@@ -58,48 +54,33 @@ export default async function LandingPage() {
         <div className="mt-8 flex items-center justify-center gap-4">
           <Link
             href={"/sign-up" as any}
-            className="inline-flex h-11 items-center gap-2 rounded-lg bg-white px-6 text-[14px] font-semibold text-ink shadow-sm transition-colors hover:bg-stone-100"
+            className="inline-flex h-11 items-center gap-2 rounded-lg bg-accent px-6 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-ink"
           >
-            Explore the Radar — Free
-            <ArrowRight className="h-4 w-4" />
+            Get Full Access — Free
           </Link>
-          <a
-            href="#pricing"
-            className="inline-flex h-11 items-center gap-2 rounded-lg border border-stone-700 px-6 text-[14px] font-medium text-stone-300 transition-colors hover:border-stone-500 hover:text-white"
+          <Link
+            href="/radar"
+            className="inline-flex h-11 items-center gap-2 rounded-lg border border-stone-700 px-6 text-[14px] font-medium text-white transition-colors hover:bg-white/5"
           >
-            See pricing
-          </a>
+            Open Radar
+          </Link>
         </div>
       </section>
 
       {/* Social proof bar */}
       <section className="border-y border-stone-800 bg-stone-900/50">
-        <div className="mx-auto flex max-w-4xl items-center justify-center gap-12 px-6 py-6">
-          <div className="text-center">
-            <div className="font-mono text-[28px] font-semibold tracking-tight text-white">
-              {projectCount}
-            </div>
-            <div className="text-[12px] font-medium uppercase tracking-wider text-stone-500">
-              Projects tracked
-            </div>
+        <div className="mx-auto flex max-w-4xl divide-x divide-stone-800 px-6 py-6">
+          <div className="flex-1 text-center">
+            <div className="font-mono text-[28px] font-semibold tracking-tight text-white">{projectCount}</div>
+            <div className="text-[12px] font-medium uppercase tracking-wider text-stone-500">Projects tracked</div>
           </div>
-          <div className="h-8 w-px bg-stone-800" />
-          <div className="text-center">
-            <div className="font-mono text-[28px] font-semibold tracking-tight text-white">
-              {signalCount.toLocaleString()}
-            </div>
-            <div className="text-[12px] font-medium uppercase tracking-wider text-stone-500">
-              Signals processed
-            </div>
+          <div className="flex-1 text-center">
+            <div className="font-mono text-[28px] font-semibold tracking-tight text-white">{signalCount.toLocaleString()}</div>
+            <div className="text-[12px] font-medium uppercase tracking-wider text-stone-500">Signals processed</div>
           </div>
-          <div className="h-8 w-px bg-stone-800" />
-          <div className="text-center">
-            <div className="font-mono text-[28px] font-semibold tracking-tight text-white">
-              {sourceCount}
-            </div>
-            <div className="text-[12px] font-medium uppercase tracking-wider text-stone-500">
-              Live sources
-            </div>
+          <div className="flex-1 text-center">
+            <div className="font-mono text-[28px] font-semibold tracking-tight text-white">{sourceCount}</div>
+            <div className="text-[12px] font-medium uppercase tracking-wider text-stone-500">Live sources</div>
           </div>
         </div>
       </section>
@@ -110,7 +91,7 @@ export default async function LandingPage() {
           Intelligence Platform
         </h2>
         <p className="mb-14 text-center text-[28px] font-semibold tracking-tight">
-          Everything you need to get ahead of the market
+          Every tool. Full access. No restrictions.
         </p>
         <div className="grid gap-6 md:grid-cols-2">
           {[
@@ -118,25 +99,21 @@ export default async function LandingPage() {
               icon: Map,
               title: "Interactive Radar",
               desc: "Scored industrial projects plotted on a live map. Filter by corridor, score band, and stage. Click any pin for deep project intelligence.",
-              free: true,
             },
             {
               icon: Bell,
               title: "Formation Alerts",
               desc: "Real-time notifications when quiet land assemblies, new permits, or entity formations signal a project is taking shape.",
-              free: false,
             },
             {
               icon: FileText,
               title: "Weekly Briefs",
               desc: "Every Monday, an AI-generated analyst brief covers top movers, new formations, recommended actions, and source health.",
-              free: false,
             },
             {
               icon: Bookmark,
               title: "Watchlists",
               desc: "Save custom filters, track specific projects across corridors, and get alerted when your watchlist changes.",
-              free: false,
             },
           ].map((f) => (
             <div
@@ -150,83 +127,38 @@ export default async function LandingPage() {
               <p className="mb-3 text-[13.5px] leading-relaxed text-stone-400">
                 {f.desc}
               </p>
-              <span className="inline-flex items-center gap-1 rounded-full border border-stone-700 px-2 py-0.5 text-[11px] font-medium text-stone-500">
-                {f.free ? (
-                  <>
-                    <CheckCircle className="h-3 w-3 text-accent" /> Free
-                  </>
-                ) : (
-                  <>
-                    <Zap className="h-3 w-3 text-warn" /> Pro
-                  </>
-                )}
+              <span className="inline-flex items-center gap-1 rounded-full border border-stone-700 px-2 py-0.5 text-[11px] font-medium text-accent">
+                <CheckCircle className="h-3 w-3 text-accent" /> Included
               </span>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Pricing */}
-      <section id="pricing" className="mx-auto max-w-4xl px-6 py-24">
-        <h2 className="mb-3 text-center text-[12px] font-semibold uppercase tracking-wider text-accent">
-          Pricing
+      {/* Access section */}
+      <section id="access" className="mx-auto max-w-2xl px-6 py-24 text-center">
+        <h2 className="mb-3 text-[12px] font-semibold uppercase tracking-wider text-accent">
+          Access
         </h2>
-        <p className="mb-14 text-center text-[28px] font-semibold tracking-tight">
-          Start free. Upgrade when you need the full picture.
+        <p className="mb-6 text-[28px] font-semibold tracking-tight">
+          Full platform access for developers &amp; investors
         </p>
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Free tier */}
-          <div className="rounded-xl border border-stone-800 bg-stone-900/50 p-8">
-            <h3 className="text-[12px] font-semibold uppercase tracking-wider text-stone-500">Free</h3>
-            <div className="mt-3 font-mono text-[40px] font-semibold tracking-tighter">$0</div>
-            <p className="mt-2 text-[13.5px] text-stone-400">Browse the radar. See what{"'"}s forming.</p>
-            <ul className="mt-6 space-y-3 text-[13.5px] text-stone-300">
-              {["Interactive radar map", "All project pins with scores", "Project summary tab", "View shared project cards"].map((item) => (
-                <li key={item} className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 flex-shrink-0 text-accent" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-            <Link
-              href={"/sign-up" as any}
-              className="mt-8 flex h-10 items-center justify-center rounded-lg border border-stone-700 text-[13px] font-semibold text-white transition-colors hover:bg-white/5"
-            >
-              Get Started Free
-            </Link>
-          </div>
-
-          {/* Pro tier */}
-          <div className="rounded-xl border border-accent/40 bg-accent/[0.04] p-8 shadow-[0_0_30px_-10px_rgba(16,163,127,0.15)]">
-            <div className="flex items-center gap-2">
-              <h3 className="text-[12px] font-semibold uppercase tracking-wider text-accent">Pro</h3>
-              <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">POPULAR</span>
-            </div>
-            <div className="mt-3">
-              <span className="font-mono text-[40px] font-semibold tracking-tighter">$10</span>
-              <span className="text-[14px] text-stone-400">/mo</span>
-            </div>
-            <p className="mt-2 text-[13.5px] text-stone-400">Full intelligence. Act before the market.</p>
-            <ul className="mt-6 space-y-3 text-[13.5px] text-stone-300">
-              {[
-                "Everything in Free",
-                "Full project drawer (6 tabs)",
-                "Formation alerts",
-                "AI weekly briefs + email delivery",
-                "Watchlists with notifications",
-                "Shareable project cards",
-                "Recommended actions by role",
-              ].map((item) => (
-                <li key={item} className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 flex-shrink-0 text-accent" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-            <div className="mt-8">
-              <PricingCTA />
-            </div>
-          </div>
+        <p className="mb-10 text-[15px] leading-relaxed text-stone-400">
+          Everything is unlocked — the full project drawer, formation alerts, AI weekly briefs, watchlists, entity graphs, evidence archive, and recommended actions. Sign up and start tracking the Gulf Coast corridor today.
+        </p>
+        <div className="flex items-center justify-center gap-4">
+          <Link
+            href={"/sign-up" as any}
+            className="inline-flex h-11 items-center gap-2 rounded-lg bg-accent px-6 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-ink"
+          >
+            Get Full Access
+          </Link>
+          <Link
+            href="/radar"
+            className="inline-flex h-11 items-center gap-2 rounded-lg border border-stone-700 px-6 text-[14px] font-medium text-white transition-colors hover:bg-white/5"
+          >
+            Open Radar
+          </Link>
         </div>
       </section>
 

@@ -20,7 +20,7 @@ const NAV = [
 
 export function Topbar({
   watchlistCount = 0,
-  plan = "free",
+  plan: _plan = "pro",
 }: {
   watchlistCount?: number;
   plan?: "free" | "pro";
@@ -78,13 +78,8 @@ export function Topbar({
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           <Eye className="h-3 w-3" /> {watchlistCount} watching
         </button>
-        <span className={cn(
-          "inline-flex h-[22px] items-center rounded-full px-2 text-[10.5px] font-semibold uppercase tracking-wider",
-          plan === "pro"
-            ? "bg-accent/10 text-accent"
-            : "bg-bg-3 text-muted"
-        )}>
-          {plan === "pro" ? "Pro" : "Free"}
+        <span className="inline-flex h-[22px] items-center rounded-full bg-accent/10 px-2 text-[10.5px] font-semibold uppercase tracking-wider text-accent">
+          Pro
         </span>
         <button className="gcir-icon-btn" title="Notifications">
           <Bell className="h-4 w-4" strokeWidth={1.6} />
@@ -92,19 +87,6 @@ export function Topbar({
         <button className="gcir-icon-btn" title="Settings">
           <SettingsIcon className="h-4 w-4" strokeWidth={1.6} />
         </button>
-        {plan === "pro" && (
-          <button
-            className="rounded-md px-2 py-1 text-[11px] font-medium text-muted transition-colors hover:bg-bg-3 hover:text-ink"
-            title="Manage billing"
-            onClick={async () => {
-              const res = await fetch("/api/stripe/portal");
-              const body = await res.json();
-              if (body.url) window.location.href = body.url;
-            }}
-          >
-            Billing
-          </button>
-        )}
         {authDisabled || !hasClerkKey ? (
           <div className="h-[30px] w-[30px] rounded-full border border-line bg-bg-2" />
         ) : (
