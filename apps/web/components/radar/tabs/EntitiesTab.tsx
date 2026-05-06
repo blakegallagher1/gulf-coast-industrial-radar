@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import { ConfPill } from "@/components/conf-pill";
+import { fmtDate } from "@/lib/format";
 
 type Entity = {
   id: string;
@@ -68,7 +69,7 @@ export function EntitiesTab({ projectId }: { projectId: string }) {
               </td>
               <td className="border-b border-line-2 px-2.5 py-2 text-ink-2">{e.kind}</td>
               <td className="border-b border-line-2 px-2.5 py-2 font-mono text-[11.5px] text-ink-3">
-                {e.formedAt ? new Date(e.formedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "2-digit" }) : "—"}
+                {fmtDate(e.formedAt)}
               </td>
               <td className="border-b border-line-2 px-2.5 py-2">
                 <OpacityBar score={e.opacityScore ?? 0} />

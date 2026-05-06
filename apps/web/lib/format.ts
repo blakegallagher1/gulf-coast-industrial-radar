@@ -20,13 +20,19 @@ export function fmtUSD(n: number | bigint | null | undefined, opts?: { compact?:
 export function fmtDate(d: Date | string | null | undefined): string {
   if (!d) return "—";
   const date = typeof d === "string" ? new Date(d) : d;
-  return date.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 }
 
-export function fmtAge(d: Date | string | null | undefined): string {
+export function fmtAge(d: Date | string | null | undefined, now: Date | string = new Date()): string {
   if (!d) return "—";
   const date = typeof d === "string" ? new Date(d) : d;
-  const days = Math.floor((Date.now() - date.getTime()) / 86400000);
+  const nowDate = typeof now === "string" ? new Date(now) : now;
+  const days = Math.floor((nowDate.getTime() - date.getTime()) / 86400000);
   if (days < 1) return "today";
   if (days < 30) return `${days}d`;
   if (days < 365) return `${Math.floor(days / 30)}mo`;

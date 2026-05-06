@@ -75,6 +75,7 @@ export default async function RadarPage({
         sources={sourcesAgg.map((s) => ({ slug: s.name, status: s.status }))}
         health={{ ok, degraded, total: totalSources }}
         initialProjectId={initialProjectId ?? undefined}
+        nowIso={new Date().toISOString()}
         plan="pro"
       />
     </>

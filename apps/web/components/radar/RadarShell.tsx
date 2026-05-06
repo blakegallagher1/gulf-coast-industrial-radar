@@ -37,12 +37,14 @@ export function RadarShell({
   sources,
   health,
   initialProjectId,
+  nowIso,
   plan = "free",
 }: {
   projects: RadarProject[];
   sources: { slug: string; status: string }[];
   health: Health;
   initialProjectId?: string;
+  nowIso: string;
   plan?: "free" | "pro";
 }) {
   const [activeId, setActiveId] = useState<string | null>(projects[0]?.id ?? null);
@@ -269,11 +271,12 @@ export function RadarShell({
           <AlertsOverlay
             projects={visibleProjects}
             activeId={active?.id ?? null}
+            nowIso={nowIso}
             onSelect={onSelect}
           />
         </section>
 
-        <Drawer project={active} plan={plan} />
+        <Drawer project={active} nowIso={nowIso} plan={plan} />
       </div>
 
       <StatusBar health={health} count={visibleProjects.length} />

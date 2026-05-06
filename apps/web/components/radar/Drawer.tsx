@@ -26,7 +26,15 @@ type TabId = (typeof TABS)[number]["id"];
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-export function Drawer({ project, plan: _plan = "pro" }: { project: RadarProject | null; plan?: "free" | "pro" }) {
+export function Drawer({
+  project,
+  nowIso,
+  plan: _plan = "pro",
+}: {
+  project: RadarProject | null;
+  nowIso: string;
+  plan?: "free" | "pro";
+}) {
   const [tab, setTab] = useState<TabId>("summary");
   const [watchPending, setWatchPending] = useState(false);
   const [watchError, setWatchError] = useState<string | null>(null);
@@ -143,7 +151,7 @@ export function Drawer({ project, plan: _plan = "pro" }: { project: RadarProject
             <span className="inline-flex items-center gap-1.5">
               First signal{" "}
               <strong className="font-semibold text-ink-2">{fmtDate(project.firstSignalAt)}</strong>
-              <span className="text-muted-2">({fmtAge(project.firstSignalAt)})</span>
+              <span className="text-muted-2">({fmtAge(project.firstSignalAt, nowIso)})</span>
             </span>
           )}
           {project.acres != null && (

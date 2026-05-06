@@ -10,10 +10,12 @@ import type { RadarProject } from "./RadarShell";
 export function AlertsOverlay({
   projects,
   activeId,
+  nowIso,
   onSelect,
 }: {
   projects: RadarProject[];
   activeId: string | null;
+  nowIso: string;
   onSelect: (id: string) => void;
 }) {
   return (
@@ -85,7 +87,7 @@ export function AlertsOverlay({
                 )}
               </div>
               <div className="flex items-center justify-between text-[11.5px] text-muted">
-                <span>{p.firstSignalAt ? `first signal ${fmtAge(p.firstSignalAt)}` : ""}</span>
+                <span>{p.firstSignalAt ? `first signal ${fmtAge(p.firstSignalAt, nowIso)}` : ""}</span>
                 <span className="font-mono text-muted-2">{p.publicId}</span>
               </div>
             </button>
