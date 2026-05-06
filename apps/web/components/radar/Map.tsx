@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useMemo, useRef, useCallback, useState } from "react";
 import maplibregl from "maplibre-gl";
 import { BAND_COLOR } from "@gcir/shared";
 import type { RadarProject } from "./RadarShell";
@@ -110,24 +110,37 @@ export function RadarMap({
   const markersRef    = useRef<Map<string, maplibregl.Marker>>(new Map());
   const tooltipRef    = useRef<maplibregl.Popup | null>(null);
   const hoveredIdRef  = useRef<string | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
   const activeIdRef   = useRef<string | null>(activeId);
   activeIdRef.current = activeId;
 
   /* ── init map ─────────────────────────────────────────────────────── */
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
+    if (!containerRef.current || mapRef.current || mapError) return;
 
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: DARK_STYLE as never,
-      center: [-91.8, 30.1],
-      zoom: 6.8,
-      attributionControl: { compact: true },
-      pitchWithRotate: false,
-    });
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container: containerRef.current,
+        style: DARK_STYLE as never,
+        center: [-91.8, 30.1],
+        zoom: 6.8,
+        attributionControl: { compact: true },
+        pitchWithRotate: false,
+      });
+    } catch (err) {
+      setMapError((err as Error).message || "Map renderer unavailable");
+      return;
+    }
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: "imperial" }), "bottom-left");
+    map.on("error", (event) => {
+      const error = event.error as Error | undefined;
+      if (/webgl|context/i.test(error?.message ?? "")) {
+        setMapError(error?.message ?? "Map renderer unavailable");
+      }
+    });
 
     /* inject pulse keyframe once */
     if (!document.getElementById("gcir-pulse-style")) {
@@ -178,7 +191,7 @@ export function RadarMap({
       mapRef.current = null;
       markersRef.current.clear();
     };
-  }, []);
+  }, [mapError]);
 
   /* ── load parcel GeoJSON when active project changes ─────────────── */
   const loadParcelLayer = useCallback(async (projectId: string | null) => {
@@ -352,5 +365,79 @@ export function RadarMap({
     }
   }, [activeId, projects, loadParcelLayer]);
 
+  if (mapError) {
+    return (
+      <FallbackMap
+        projects={projects}
+        activeId={activeId}
+        onSelect={onSelect}
+      />
+    );
+  }
+
   return <div ref={containerRef} className="absolute inset-0" />;
+}
+
+function FallbackMap({
+  projects,
+  activeId,
+  onSelect,
+}: {
+  projects: RadarProject[];
+  activeId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const bounds = useMemo(() => {
+    if (projects.length === 0) return { minLat: 28, maxLat: 31, minLng: -94, maxLng: -88 };
+    const latitudes = projects.map((project) => project.lat);
+    const longitudes = projects.map((project) => project.lng);
+    return {
+      minLat: Math.min(...latitudes),
+      maxLat: Math.max(...latitudes),
+      minLng: Math.min(...longitudes),
+      maxLng: Math.max(...longitudes),
+    };
+  }, [projects]);
+
+  const spanLat = Math.max(bounds.maxLat - bounds.minLat, 0.01);
+  const spanLng = Math.max(bounds.maxLng - bounds.minLng, 0.01);
+
+  return (
+    <div className="absolute inset-0 overflow-hidden bg-[#11100d]">
+      <div className="absolute inset-0 opacity-80 [background-image:linear-gradient(rgba(255,255,255,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.06)_1px,transparent_1px)] [background-size:56px_56px]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_35%_35%,rgba(201,122,22,.22),transparent_32%),radial-gradient(circle_at_62%_52%,rgba(16,163,127,.16),transparent_28%)]" />
+      <div className="absolute left-5 top-5 max-w-[360px] rounded-lg border border-white/15 bg-black/65 px-4 py-3 text-white shadow-xl backdrop-blur-md">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/50">
+          Map renderer fallback
+        </div>
+        <div className="mt-1 text-[17px] font-semibold leading-tight">Project positions are shown without WebGL</div>
+        <div className="mt-1.5 text-[12px] leading-5 text-white/58">
+          Interactive satellite tiles are unavailable in this browser session; alert triage and project drilldowns remain active.
+        </div>
+      </div>
+      {projects.map((project) => {
+        const active = project.id === activeId;
+        const left = ((project.lng - bounds.minLng) / spanLng) * 72 + 14;
+        const top = (1 - (project.lat - bounds.minLat) / spanLat) * 56 + 22;
+        return (
+          <button
+            key={project.id}
+            type="button"
+            onClick={() => onSelect(project.id)}
+            className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/60 text-white shadow-xl transition-transform hover:scale-110"
+            style={{
+              left: `${left}%`,
+              top: `${top}%`,
+              background: BAND_COLOR[project.band] ?? "#6b6b6b",
+              width: active ? 48 : 38,
+              height: active ? 48 : 38,
+            }}
+            title={project.name}
+          >
+            <span className="font-mono text-[11px] font-bold">{project.score}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }

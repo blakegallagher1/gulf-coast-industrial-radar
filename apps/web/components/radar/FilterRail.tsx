@@ -40,6 +40,9 @@ export function FilterRail({
     (acc, p) => ({ ...acc, [p.band]: (acc[p.band] ?? 0) + 1 }),
     {} as Record<ScoreBand, number>,
   );
+  const visibleCount = _visibleCount ?? projects.length;
+  const selectedCorridors = corridorFilter.size;
+  const selectedBands = bandFilter.size;
 
   return (
     <aside
@@ -47,6 +50,18 @@ export function FilterRail({
         "flex w-[var(--rail-w)] flex-shrink-0 flex-col overflow-y-auto border-r border-line bg-bg-2",
       )}
     >
+      <div className="border-b border-line-2 px-3.5 py-3.5">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+          Radar scope
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <RailMetric label="visible" value={String(visibleCount)} />
+          <RailMetric label="total" value={String(projects.length)} />
+        </div>
+        <div className="mt-2 rounded-md border border-line bg-white px-2.5 py-2 text-[11.5px] text-muted">
+          {selectedCorridors}/{CORRIDORS.length} corridors · {selectedBands}/4 score bands
+        </div>
+      </div>
       <Section title="Corridor" count={CORRIDORS.length}>
         {CORRIDORS.map((c) => {
           const on = corridorFilter.has(c);
@@ -133,6 +148,15 @@ export function FilterRail({
         ))}
       </Section>
     </aside>
+  );
+}
+
+function RailMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-line bg-white px-2.5 py-2">
+      <div className="font-mono text-[15px] font-semibold leading-none text-ink">{value}</div>
+      <div className="mt-1 text-[10px] uppercase tracking-[0.06em] text-muted">{label}</div>
+    </div>
   );
 }
 

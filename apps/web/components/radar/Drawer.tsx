@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { BookmarkPlus, FileText, MapPin, Share2, Sparkles } from "lucide-react";
+import { BookmarkPlus, Clock3, FileText, MapPin, Route, Share2, Sparkles } from "lucide-react";
 import { fmtAcres, fmtAge, fmtDate } from "@/lib/format";
 import { SummaryTab } from "./tabs/SummaryTab";
 import { TimelineTab } from "./tabs/TimelineTab";
@@ -202,6 +202,24 @@ export function Drawer({
           </div>
         </div>
 
+        <div className="mt-3 grid grid-cols-3 overflow-hidden rounded-md border border-line bg-white text-[11.5px]">
+          <ProjectPosture
+            icon={<Clock3 className="h-3.5 w-3.5" />}
+            label="lead signal"
+            value={project.firstSignalAt ? fmtAge(project.firstSignalAt, nowIso) : "unseen"}
+          />
+          <ProjectPosture
+            icon={<Route className="h-3.5 w-3.5" />}
+            label="corridor"
+            value={project.corridor || "unmapped"}
+          />
+          <ProjectPosture
+            icon={<FileText className="h-3.5 w-3.5" />}
+            label="next move"
+            value={project.band === "high" || project.band === "elevated" ? "brief + option map" : "monitor"}
+          />
+        </div>
+
         <div className="mt-3 flex gap-2">
           <button className="gcir-btn-primary" onClick={() => router.push("/briefs")}>
             <Sparkles className="h-3.5 w-3.5" /> Generate brief
@@ -238,5 +256,25 @@ export function Drawer({
         {tab === "actions" && <ActionsTab projectId={project.id} />}
       </div>
     </aside>
+  );
+}
+
+function ProjectPosture({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 border-r border-line px-3 py-2.5 last:border-r-0">
+      <div className="flex items-center gap-1.5 text-muted">
+        {icon}
+        <span className="uppercase tracking-[0.06em]">{label}</span>
+      </div>
+      <div className="mt-1 truncate font-semibold text-ink">{value}</div>
+    </div>
   );
 }
