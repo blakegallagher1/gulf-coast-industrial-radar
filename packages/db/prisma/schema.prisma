@@ -674,6 +674,28 @@ model AgentRun {
   @@index([agent, startedAt])
 }
 
+model BacktestRun {
+  id                    String   @id @default(cuid())
+  status                String   @default("ok")
+  generatedAt           DateTime
+  completedAt           DateTime @default(now())
+  projectCount           Int
+  alertedAheadCount      Int
+  averageLeadTimeDays    Float
+  medianLeadTimeDays     Float
+  longestLeadDays        Int
+  shortestLeadDays       Int
+  precision              Float
+  recall                 Float
+  duplicateRate          Float
+  falsePositiveRate      Float
+  resultJson             Json
+  createdAt              DateTime @default(now())
+
+  @@index([completedAt])
+  @@index([status, completedAt])
+}
+
 // ============================================================================
 //  PERPLEXITY CACHE (Phase 3)
 // ============================================================================

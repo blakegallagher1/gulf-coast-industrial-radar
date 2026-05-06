@@ -7,8 +7,9 @@
     "build": "next build",
     "vercel-build": "cd ../.. && pnpm db:generate && pnpm --filter @gcir/web build",
     "start": "sh -ac 'set -a; . ../../.env.local; set +a; exec next start'",
-    "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.16.0",
@@ -41,6 +42,7 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
   }
 }

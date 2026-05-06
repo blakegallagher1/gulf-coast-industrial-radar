@@ -1,5 +1,7 @@
 import Link from "next/link";
+import type { Route } from "next";
 import { prisma, auroraProject, validationProjectsPart1, validationProjectsPart2 } from "@gcir/db";
+import { runBacktest } from "@gcir/scoring";
 import { fmtDate } from "@/lib/format";
 import { UsageEventTracker } from "@/components/usage-event-tracker";
 import { RecoveryActions } from "./recovery-actions";
@@ -223,6 +225,14 @@ export default async function ProofPage() {
       recipients24h,
     })),
   ]);
+  const [backtest, lastBacktestRun] = await Promise.all([
+    Promise.resolve(runBacktest()),
+    prisma.backtestRun.findFirst({
+      where: { status: "ok" },
+      orderBy: { completedAt: "desc" },
+      select: { id: true, completedAt: true },
+    }),
+  ]);
 
   const sourceCounts = sources.reduce(
     (acc, source) => {
@@ -431,6 +441,9 @@ export default async function ProofPage() {
         not a marketing surface. It is the operating proof for whether the radar is
         actually ready to earn trust with investors, developers, and adjacent project teams.
       </p>
+      <div className="mt-3 font-mono text-[11.5px] text-muted">
+        Last successful backtest run: {lastBacktestRun ? fmtDate(lastBacktestRun.completedAt) : "not persisted yet"}
+      </div>
 
       <section className="mt-8 grid grid-cols-4 gap-3">
         <MetricCard
@@ -440,13 +453,13 @@ export default async function ProofPage() {
         />
         <MetricCard
           label="Average lead time"
-          value={validationAverageLeadDays != null ? `${validationAverageLeadDays}d` : "—"}
-          note="seeded backtest first signal to public announcement"
+          value={`${backtest.metrics.averageLeadTimeDays}d`}
+          note="computed by runBacktest across seeded validation projects"
         />
         <MetricCard
           label="Longest lead"
-          value={validationMaxLeadDays != null ? `${validationMaxLeadDays}d` : "—"}
-          note="best historical head start in seeded backtest"
+          value={`${backtest.metrics.longestLeadDays}d`}
+          note={`${backtest.metrics.alertedAheadCount} of ${backtest.metrics.projectCount} ahead of announcement`}
         />
         <MetricCard
           label="Fresh lanes"
@@ -670,7 +683,7 @@ export default async function ProofPage() {
             Validation backtest scoreboard
           </h2>
           <span className="font-mono text-[11.5px] text-muted">
-            {validationProjects.length} seeded public-project fixtures
+            {backtest.projects.length} seeded public-project fixtures
           </span>
         </header>
         <div className="overflow-hidden rounded-md border border-line">
@@ -683,36 +696,32 @@ export default async function ProofPage() {
             <div>Lead time</div>
             <div>Signals</div>
           </div>
-          {validationProjects.map((project) => {
-            const lead = daysBetween(
-              new Date(project.firstSignalAt),
-              project.publicAnnouncedAt ? new Date(project.publicAnnouncedAt) : null,
-            );
+          {backtest.projects.map((project) => {
             return (
-              <div
-                key={project.publicId}
+              <Link
+                key={project.projectKey}
+                href={(`/proof/${project.projectKey}`) as Route}
                 className="grid grid-cols-[110px_1.5fr_150px_120px_120px_120px_110px] items-center border-b border-line px-4 py-3 text-[13px] last:border-b-0"
               >
-                <div className="font-mono text-[11.5px] text-muted">{project.publicId}</div>
+                <div className="font-mono text-[11.5px] text-muted">{project.status}</div>
                 <div>
-                  <div className="font-semibold tracking-tight text-ink">{project.name}</div>
+                  <div className="font-semibold tracking-tight text-ink">{project.projectName}</div>
                   <div className="mt-0.5 text-[11.5px] text-muted">
-                    First signal {fmtDate(new Date(project.firstSignalAt))}
-                    {project.publicAnnouncedAt ? ` · public ${fmtDate(new Date(project.publicAnnouncedAt))}` : ""}
+                    First surfaced {project.earliestSurfacedAt ?? "unmet"} · public {project.publicAnnouncementDate}
                   </div>
                 </div>
-                <div className="text-muted">{project.parishCounty ?? "—"}</div>
+                <div className="text-muted">{project.qladTriggerDate ? "QLAD triggered" : "Formation only"}</div>
                 <div className="font-mono text-[11.5px] text-muted">
-                  {project.stage.toLowerCase().replace(/_/g, "-")}
+                  {project.recommendedAction}
                 </div>
-                <div className="font-mono text-[14px] font-semibold text-ink">{project.score}</div>
+                <div className="font-mono text-[14px] font-semibold text-ink">{project.formationScoreAtSurface}</div>
                 <div className="font-mono text-[12px] text-muted">
-                  {lead != null ? `${lead} days` : "unannounced"}
+                  {project.leadTimeDays != null ? `${project.leadTimeDays} days` : "unmet"}
                 </div>
                 <div className="font-mono text-[12px] text-muted">
-                  {project.signals.length}
+                  {project.timeline.length}
                 </div>
-              </div>
+              </Link>
             );
           })}
         </div>

@@ -25,6 +25,8 @@ END $$;
 ALTER TABLE public."Parcel" DROP COLUMN IF EXISTS geom;
 ALTER TABLE public."Site" DROP COLUMN IF EXISTS geom;
 
+DROP EXTENSION IF EXISTS postgis_tiger_geocoder;
+DROP EXTENSION IF EXISTS postgis_topology;
 DROP EXTENSION IF EXISTS postgis;
 
 CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA extensions;

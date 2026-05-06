@@ -1,5 +1,12 @@
 # Gulf Coast Industrial Radar Log
 
+## 2026-05-05
+
+- Promoted the seeded validation backtest into an in-product proof surface.
+  - Added deterministic `runBacktest()` scoring against the 10 seeded reference projects.
+  - Added `/api/backtest/run` persistence into `BacktestRun`, plus `/proof/[projectKey]` drilldowns and `/admin/backtest` aggregate metrics.
+  - Computed metrics: 9/10 alerted ahead of announcement, 304.44-day average lead, 265-day median lead, 730-day longest lead, 125-day shortest positive lead, 90% precision, 90% recall, 90% duplicate rate, 0% false-positive rate.
+
 ## 2026-04-30
 
 - Integrated the two newly added April 30 research files into the markdown knowledge base.

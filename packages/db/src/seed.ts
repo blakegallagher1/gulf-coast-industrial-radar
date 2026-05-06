@@ -28,6 +28,9 @@ async function main() {
 
   // 1) sources
   const sourceMap = new Map<string, string>();
+  const sourceUrlMap = new Map<string, string>(
+    sources.map((source) => [source.slug, source.url]),
+  );
   for (const s of sources) {
     const row = await prisma.source.upsert({
       where: { slug: s.slug },
@@ -145,9 +148,44 @@ async function main() {
     }
 
     // signals
-    for (const sig of fx.signals) {
+    for (const [index, sig] of fx.signals.entries()) {
       const sourceId = sourceMap.get(sig.sourceSlug);
       if (!sourceId) continue;
+      const sourceSlug = sig.sourceSlug as (typeof sources)[number]["slug"];
+      const rawDocumentId = `rawdoc:${fx.publicId}:${sig.sourceSlug}:${index + 1}`;
+      await prisma.rawDocument.upsert({
+        where: { id: rawDocumentId },
+        update: {
+          observedAt: new Date(sig.observedAt),
+          documentDate: new Date(sig.observedAt),
+          url: sourceUrlMap.get(sourceSlug) ?? `seed://${sig.sourceSlug}`,
+          title: sig.subjectLabel,
+          excerpt: sig.subjectLabel,
+          metadata: {
+            projectPublicId: fx.publicId,
+            predicate: sig.predicate,
+            sourceSlug: sig.sourceSlug,
+          },
+        },
+        create: {
+          id: rawDocumentId,
+          sourceId,
+          observedAt: new Date(sig.observedAt),
+          documentDate: new Date(sig.observedAt),
+          url: sourceUrlMap.get(sourceSlug) ?? `seed://${sig.sourceSlug}`,
+          contentHash: `seed:${fx.publicId}:${sig.sourceSlug}:${index + 1}`,
+          storageKey: `seed://${fx.publicId}/${sig.sourceSlug}/${index + 1}`,
+          mimeType: "text/plain",
+          bytes: sig.subjectLabel.length,
+          title: sig.subjectLabel,
+          excerpt: sig.subjectLabel,
+          metadata: {
+            projectPublicId: fx.publicId,
+            predicate: sig.predicate,
+            sourceSlug: sig.sourceSlug,
+          },
+        },
+      });
       const exists = await prisma.signal.findFirst({
         where: {
           projectId: project.id,
@@ -155,7 +193,13 @@ async function main() {
           observedAt: new Date(sig.observedAt),
         },
       });
-      if (exists) continue;
+      if (exists) {
+        await prisma.signal.update({
+          where: { id: exists.id },
+          data: { rawDocumentId },
+        });
+        continue;
+      }
       await prisma.signal.create({
         data: {
           projectId: project.id,
@@ -167,6 +211,7 @@ async function main() {
           confidence: sig.confidence,
           payload: sig.payload ?? Prisma.JsonNull,
           sourceId,
+          rawDocumentId,
         },
       });
     }

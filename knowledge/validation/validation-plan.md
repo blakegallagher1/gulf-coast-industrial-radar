@@ -1,8 +1,8 @@
 ---
 title: Validation Plan
 type: validation
-status: draft
-last_updated: 2026-04-30
+status: active
+last_updated: 2026-05-05
 ---
 
 # Validation Plan
@@ -42,14 +42,31 @@ For each project, reconstruct:
 
 ## Metrics
 
-- Lead time.
-- Precision.
-- Recall.
-- Duplicate rate.
-- False-positive rate.
-- Missing-source rate.
-- Source freshness.
-- Recommended-action usefulness.
+Computed on 2026-05-05 by `runBacktest()` against the 10 seeded validation
+fixtures, using only the existing scoring package and fixture `RawDocument`
+rows. The in-product surfaces are `/proof`, `/proof/[projectKey]`, and
+`/admin/backtest`.
+
+| Metric | Result | Notes |
+|---|---:|---|
+| Project count | 10 | Seeded public-project validation fixtures only. |
+| Alerted ahead of announcement | 9 | Air Products first seeded signal is on the announcement date, so it remains a late/unmet lead-time row. |
+| Average lead time | 304.44 days | Positive lead-time rows only. |
+| Median lead time | 265 days | Positive lead-time rows only. |
+| Longest lead | 730 days | Lake Charles LNG Expansion. |
+| Shortest positive lead | 125 days | AM/NS Calvert Expansion. |
+| Precision | 90% | 9 of 10 surfaced ahead of announcement. |
+| Recall | 90% | 9 of 10 seeded reference projects surfaced ahead of announcement. |
+| Duplicate rate | 90% | 9 projects have more than one alert family in the fixture timeline. |
+| False-positive rate | 0% | Every fixture has a downstream public announcement match; no unmatched alert rows are introduced. |
+
+Remaining validation gaps:
+
+- Missing-source rate and source freshness should stay on `/proof` because they
+  depend on the live local database, not the offline seeded backtest.
+- Recommended-action usefulness still requires buyer/operator review; the
+  backtest now shows which action would have fired, but not whether a user
+  acted on it.
 
 ## Market Validation
 
