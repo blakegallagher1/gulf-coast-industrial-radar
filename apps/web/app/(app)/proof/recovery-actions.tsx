@@ -34,7 +34,7 @@ export function RecoveryActions({
     setPendingAction("qlad");
     startTransition(async () => {
       try {
-        const response = await fetch("/api/cron/qlad", { method: "POST" });
+        const response = await fetch("/api/qlad/run", { method: "POST" });
         const body = (await response.json().catch(() => null)) as
           | { ok?: boolean; error?: string; result?: QladResult }
           | null;
@@ -116,43 +116,38 @@ export function RecoveryActions({
   }
 
   return (
-    <section className="mt-10 rounded-md border border-line bg-bg-2 px-4 py-4">
-      <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
-        Operator recovery actions
+    <section className="mt-10 overflow-hidden rounded-[7px] border border-line bg-bone shadow-sm">
+      <div className="border-b border-line bg-bone-2/60 px-5 py-3">
+        <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-ink">
+          Operator recovery actions
+        </div>
+        <div className="mt-1 font-display text-[18px] leading-tight tracking-tight text-ink">Recover stalled output</div>
       </div>
-      <div className="mb-3 text-[13px] leading-snug text-muted">
-        Use these when the pipeline has raw evidence but no investor-facing objects yet. They are
-        for recovering stalled formation or brief output, not for routine browsing.
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {showQladRecovery && (
-          <button
-            type="button"
-            onClick={runQlad}
-            disabled={isPending}
-            className="gcir-btn-primary"
-          >
-            {pendingAction === "qlad" ? "Running QLAD..." : "Run QLAD recovery"}
+      <div className="px-5 py-4">
+        <div className="mb-3.5 text-[13px] leading-[1.6] text-muted">
+          Use these when the pipeline has raw evidence but no investor-facing objects yet. They are
+          for recovering stalled formation or brief output — not for routine browsing.
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {showQladRecovery && (
+            <button type="button" onClick={runQlad} disabled={isPending} className="gcir-btn-accent">
+              {pendingAction === "qlad" ? "Running QLAD…" : "Run QLAD recovery"}
+            </button>
+          )}
+          <button type="button" onClick={promoteCandidates} disabled={isPending} className="gcir-btn">
+            {pendingAction === "candidates" ? "Promoting…" : "Promote top candidates"}
           </button>
+          <button type="button" onClick={generateBrief} disabled={isPending} className="gcir-btn">
+            {pendingAction === "brief" ? "Generating brief…" : "Generate current brief"}
+          </button>
+        </div>
+        {message && (
+          <div className="mt-4 rounded-[5px] border border-line bg-bone-2/70 px-3.5 py-2.5 font-mono text-[11.5px] text-ink-3">
+            <span className="mr-2 text-accent-ink">→</span>
+            {message}
+          </div>
         )}
-        <button
-          type="button"
-          onClick={promoteCandidates}
-          disabled={isPending}
-          className="gcir-btn"
-        >
-          {pendingAction === "candidates" ? "Promoting candidates..." : "Promote top candidates"}
-        </button>
-        <button
-          type="button"
-          onClick={generateBrief}
-          disabled={isPending}
-          className="gcir-btn"
-        >
-          {pendingAction === "brief" ? "Generating brief..." : "Generate current brief"}
-        </button>
       </div>
-      {message && <div className="mt-3 text-[12px] text-muted">{message}</div>}
     </section>
   );
 }

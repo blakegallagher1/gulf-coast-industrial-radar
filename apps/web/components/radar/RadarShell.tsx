@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CORRIDORS, scoreBand, type ScoreBand } from "@gcir/shared";
-import { Activity, Crosshair, Database, Factory } from "lucide-react";
+import { Activity, Crosshair, Database, Factory, Search } from "lucide-react";
 import { RadarMap } from "./Map";
 import { AlertsOverlay } from "./AlertsOverlay";
 import { FilterRail } from "./FilterRail";
@@ -229,27 +229,33 @@ export function RadarShell({
     <>
       {isCommandOpen && (
         <div
-          className="fixed inset-0 z-[120] bg-black/30 backdrop-blur-sm"
+          className="fixed inset-0 z-[120] bg-ink/55 backdrop-blur-md"
           onClick={() => setIsCommandOpen(false)}
         >
           <div
-            className="absolute left-1/2 top-20 w-full max-w-[680px] -translate-x-1/2 rounded-lg border border-line bg-white p-3 shadow-2xl"
+            className="absolute left-1/2 top-[18%] w-full max-w-[680px] -translate-x-1/2 overflow-hidden rounded-[10px] border border-bone/15 bg-bone shadow-lg"
             onClick={(event) => event.stopPropagation()}
           >
-            <input
-              ref={commandInputRef}
-              value={commandQuery}
-              onChange={(event) => {
-                setCommandQuery(event.target.value);
-                setCommandSelection(0);
-              }}
-              placeholder="Search projects by name, ID, parish, or signal"
-              className="mb-2 block w-full rounded-md border border-line bg-white px-2.5 py-2 text-[13px] outline-none ring-2 ring-transparent transition focus:ring-accent"
-            />
-            <div className="max-h-[50vh] overflow-y-auto pr-0.5">
+            <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+              <Search className="h-4 w-4 text-muted" />
+              <input
+                ref={commandInputRef}
+                value={commandQuery}
+                onChange={(event) => {
+                  setCommandQuery(event.target.value);
+                  setCommandSelection(0);
+                }}
+                placeholder="Search projects, owners, parcels, signals…"
+                className="flex-1 bg-transparent font-sans text-[15px] tracking-tight text-ink placeholder:text-muted-2 focus:outline-none"
+              />
+              <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted">
+                ↑↓ navigate · ↵ open · esc
+              </span>
+            </div>
+            <div className="scrollbar-thin max-h-[55vh] overflow-y-auto p-2">
               {visibleCommandProjects.length === 0 && (
-                <div className="rounded-md border border-dashed border-line bg-bg-2 p-4 text-center text-[12.5px] text-muted">
-                  No matches for <span className="font-mono">{commandQuery || "empty query"}</span>
+                <div className="rounded-[6px] border border-dashed border-line bg-bone-2 p-6 text-center text-[12.5px] text-muted">
+                  No matches for <span className="font-mono">"{commandQuery || "empty query"}"</span>
                 </div>
               )}
               {visibleCommandProjects.map((project: RadarProject, index: number) => {
@@ -263,18 +269,27 @@ export function RadarShell({
                     onMouseEnter={() => setCommandSelection(index)}
                     className={
                       isSelected
-                        ? "flex w-full items-start gap-2 rounded-md border border-line bg-bg-3 px-2.5 py-2 text-left"
-                        : "flex w-full items-start gap-2 rounded-md border border-transparent px-2.5 py-2 text-left hover:bg-bg-3"
+                        ? "flex w-full items-start gap-3 rounded-[6px] border border-accent/30 bg-accent/[0.07] px-3 py-2.5 text-left"
+                        : "flex w-full items-start gap-3 rounded-[6px] border border-transparent px-3 py-2.5 text-left transition-colors hover:bg-bone-2"
                     }
                   >
+                    <span
+                      className="mt-1 h-2 w-2 flex-shrink-0 rounded-full"
+                      style={{
+                        background:
+                          project.band === "high" ? "var(--crit)" :
+                          project.band === "elevated" ? "var(--accent)" :
+                          project.band === "watch" ? "var(--info)" : "var(--muted)",
+                      }}
+                    />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[13.5px] font-semibold text-ink">{project.name}</div>
-                      <div className="mt-0.5 truncate text-[11.5px] text-muted">
+                      <div className="truncate font-sans text-[13.5px] font-semibold tracking-tight text-ink">{project.name}</div>
+                      <div className="mt-0.5 truncate font-mono text-[10.5px] uppercase tracking-[0.10em] text-muted">
                         {project.publicId} · {project.parishCounty}
                         {project.state ? `, ${project.state}` : ""} · {project.stage.toLowerCase().replace(/_/g, "-")}
                       </div>
                     </div>
-                    <div className="font-mono text-[11px] text-muted-2">{project.score}</div>
+                    <div className="font-mono text-[12px] font-semibold tabular-nums text-ink-3">{project.score}</div>
                   </button>
                 );
               })}
@@ -294,61 +309,76 @@ export function RadarShell({
           visibleProjectIds={visibleProjects.map((project) => project.id)}
         />
 
-        <section className="relative min-w-0 flex-1 bg-bg-3">
-          <div className="pointer-events-none absolute left-4 top-4 z-10 w-[264px] max-lg:hidden">
-            <div className="overflow-hidden rounded-lg border border-white/15 bg-black/70 text-white shadow-2xl backdrop-blur-md">
-              <div className="flex items-center justify-between gap-3 border-b border-white/10 px-3 py-2">
+        <section className="relative min-w-0 flex-1 bg-ink">
+          {/* ── Formation desk (workspace overlay) ─────────────────────── */}
+          <div className="pointer-events-none absolute left-4 top-4 z-10 w-[296px] max-lg:hidden">
+            <div className="relative overflow-hidden rounded-[8px] border border-bone/15 bg-[#0c100e]/85 text-bone shadow-[0_24px_60px_-20px_rgba(0,0,0,0.55)] backdrop-blur-md">
+              {/* corner amber notch */}
+              <div className="absolute -right-2 -top-2 h-12 w-12 rotate-12 bg-accent/[0.15] blur-md" />
+
+              <div className="flex items-center justify-between gap-3 border-b border-bone/[0.08] px-3.5 py-2.5">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-white/55">
-                    <Activity className="h-3.5 w-3.5 text-emerald-300" />
+                  <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
+                    <Activity className="h-3 w-3" />
                     Formation desk
                   </div>
-                  <div className="mt-1 truncate text-[15px] font-semibold leading-tight tracking-tight">
+                  <div className="mt-0.5 truncate font-display text-[16px] leading-tight tracking-[-0.01em] text-bone">
                     {active ? active.name : "No project selected"}
                   </div>
                 </div>
-                <div className="shrink-0 rounded-md border border-white/10 bg-white/8 px-2 py-1.5 text-right">
-                  <div className="font-mono text-[19px] font-semibold leading-none">
+                <div className="shrink-0 rounded-[5px] border border-bone/[0.10] bg-bone/[0.04] px-2 py-1.5 text-right">
+                  <div className="font-display text-[22px] leading-none text-bone">
                     {active?.score ?? "--"}
                   </div>
-                  <div className="mt-0.5 text-[10px] uppercase tracking-[0.08em] text-white/45">
+                  <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-bone/45">
                     score
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-4 divide-x divide-white/10 text-[11px]">
+
+              <div className="grid grid-cols-4 divide-x divide-bone/[0.08]">
                 <WorkspaceStat
-                  icon={<Crosshair className="h-3.5 w-3.5" />}
+                  icon={<Crosshair className="h-3 w-3" />}
                   label="view"
                   value={String(visibleProjects.length)}
                 />
                 <WorkspaceStat
-                  icon={<Factory className="h-3.5 w-3.5" />}
+                  icon={<Factory className="h-3 w-3" />}
                   label="intent"
                   value={String(workspaceMetrics.highIntent)}
+                  accent
                 />
                 <WorkspaceStat
                   label="acres"
                   value={workspaceMetrics.totalAcres > 0 ? Math.round(workspaceMetrics.totalAcres).toLocaleString() : "0"}
                 />
                 <WorkspaceStat
-                  icon={<Database className="h-3.5 w-3.5" />}
+                  icon={<Database className="h-3 w-3" />}
                   label="sources"
                   value={`${health.ok}/${health.total}`}
                 />
               </div>
-              <div className="space-y-1 border-t border-white/10 px-3 py-2 text-[11px] text-white/62">
-                <div className="truncate">
-                  Focus corridor:{" "}
-                  <strong className="font-semibold text-white">
+
+              <div className="space-y-1 border-t border-bone/[0.08] px-3.5 py-2.5 font-mono text-[10.5px] text-bone/55">
+                <div className="flex items-center gap-2 truncate">
+                  <span className="text-bone/35 uppercase tracking-[0.12em]">focus</span>
+                  <span className="truncate font-semibold text-bone">
                     {workspaceMetrics.topCorridor ? workspaceMetrics.topCorridor[0] : "none"}
-                  </strong>
-                  {workspaceMetrics.topCorridor ? ` · ${workspaceMetrics.topCorridor[1]} projects` : ""}
+                  </span>
+                  {workspaceMetrics.topCorridor && (
+                    <span className="text-bone/35">· {workspaceMetrics.topCorridor[1]} projects</span>
+                  )}
                 </div>
-                <div className="truncate font-mono text-white/45">{sourcePosture}</div>
+                <div className="truncate text-bone/40 uppercase tracking-[0.10em]">{sourcePosture}</div>
+              </div>
+
+              {/* Bottom rule with phosphor sweep marker */}
+              <div className="relative h-[3px] w-full overflow-hidden bg-bone/[0.06]">
+                <div className="absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-accent/70 to-transparent animate-ticker" />
               </div>
             </div>
           </div>
+
           <RadarMap
             projects={visibleProjects}
             activeId={active?.id ?? null}
@@ -384,17 +414,23 @@ function WorkspaceStat({
   icon,
   label,
   value,
+  accent,
 }: {
   icon?: React.ReactNode;
   label: string;
   value: string;
+  accent?: boolean;
 }) {
   return (
-    <div className="flex min-w-0 flex-col items-center justify-center gap-1 px-2.5 py-2.5 text-center">
-      {icon && <span className="text-white/45">{icon}</span>}
+    <div className="flex min-w-0 flex-col items-center justify-center gap-1 px-2 py-2.5 text-center">
+      {icon && <span className={accent ? "text-accent" : "text-bone/45"}>{icon}</span>}
       <div className="min-w-0">
-        <div className="font-mono text-[13px] font-semibold leading-none text-white">{value}</div>
-        <div className="mt-1 truncate text-[10px] uppercase tracking-[0.08em] text-white/42">{label}</div>
+        <div className={`font-display text-[16px] leading-none ${accent ? "text-accent" : "text-bone"}`}>
+          {value}
+        </div>
+        <div className="mt-1 truncate font-mono text-[9px] uppercase tracking-[0.18em] text-bone/40">
+          {label}
+        </div>
       </div>
     </div>
   );

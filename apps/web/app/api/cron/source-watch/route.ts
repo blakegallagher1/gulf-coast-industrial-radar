@@ -1,18 +1,15 @@
 import { NextResponse } from "next/server";
 import { runSourceWatch } from "@gcir/agents";
 import { prisma } from "@gcir/db";
+import { verifyCronAuthorization } from "@/lib/cron-auth";
 
 /**
  * Cron-callable endpoint — invokes the SourceWatcher on the staleness-prioritized
  * batch. Use Vercel Cron or any scheduler with Authorization: Bearer HEALTHCHECK_TOKEN.
  */
 export async function POST(req: Request) {
-  const auth = req.headers.get("authorization") ?? "";
-  const token = process.env.CRON_SECRET ?? process.env.HEALTHCHECK_TOKEN;
-  const expected = token ? `Bearer ${token}` : null;
-  if (expected && auth !== expected) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const authFailure = verifyCronAuthorization(req);
+  if (authFailure) return authFailure;
 
   const sources = await prisma.source.findMany({
     where: { status: { in: ["ACTIVE", "DEGRADED"] } },

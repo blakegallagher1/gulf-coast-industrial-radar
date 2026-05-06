@@ -75,7 +75,7 @@ export function FollowControls({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => save(!followed, !followed ? deliveryMode : "manual")}
+            onClick={() => save(!followed, !followed ? "weekly_brief" : "manual")}
             disabled={pending}
             className={followed ? "gcir-btn-primary" : "gcir-btn"}
           >

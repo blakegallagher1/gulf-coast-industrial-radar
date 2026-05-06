@@ -2,13 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Match the Phase 1 prototype's design language exactly. */
+/* ──────────────────────────────────────────────────────────────────────────
+   Brick & Yield · "The Pilot House" design system
+   Industrial-intelligence operating console: ink, bone, phosphor, cinnabar.
+   ────────────────────────────────────────────────────────────────────────── */
+
 @layer base {
   :root {
-    --header-h: 54px;
-    --status-h: 32px;
-    --rail-w: 268px;
-    --drawer-w: 480px;
+    --header-h: 56px;
+    --status-h: 30px;
+    --rail-w: 280px;
+    --drawer-w: 484px;
+
+    /* Pilot House palette (mirrors Tailwind tokens) */
+    --ink:        #0c100e;
+    --ink-2:      #1a201d;
+    --ink-3:      #3a4541;
+    --ink-4:      #5b6b66;
+    --bone:       #f4ede0;
+    --bone-2:     #ece4d3;
+    --bone-3:     #e1d8c4;
+    --bone-4:     #cabe9f;
+    --line:       #cbc1ae;
+    --line-2:     #dcd2bc;
+    --line-dark:  #22302b;
+    --line-dark2: #324137;
+    --muted:      #7a847f;
+    --muted-2:    #9aa39e;
+    --accent:     #e9a539;     /* phosphor amber */
+    --accent-ink: #a96f17;
+    --crit:       #c9402a;     /* cinnabar */
+    --info:       #2f7575;     /* patina teal */
+    --warn:       #a87016;
+    --phosphor:   #7dd6a3;
   }
 
   @media (max-width: 768px) {
@@ -20,102 +46,350 @@
 
   html, body { height: 100%; }
   body {
-    @apply bg-bg text-ink antialiased;
-    font-feature-settings: "cv11", "ss01", "ss03";
+    background: var(--bone);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "ss01", "ss03", "cv11";
   }
-  ::selection { background: rgb(16 163 127 / 0.08); }
+
+  /* Selection in phosphor amber */
+  ::selection { background: rgba(233,165,57,0.32); color: var(--ink); }
+
+  /* Numerals in mono should always be tabular */
+  .font-mono { font-feature-settings: "tnum", "zero", "ss01"; }
+
+  /* Display serif lockup — used for titles and major numerals */
+  .font-display {
+    font-family: "Instrument Serif", ui-serif, Georgia, serif;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+  }
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+   Component primitives
+   ────────────────────────────────────────────────────────────────────────── */
 @layer components {
-  /* topbar primitives */
+  /* — Top nav buttons — */
   .gcir-topnav-btn {
-    @apply rounded-md px-3 py-1.5 text-[13px] font-medium text-ink-3 transition-colors hover:bg-bg-3 hover:text-ink;
+    @apply relative rounded-[5px] px-2.5 py-1.5 text-[12.5px] font-medium uppercase tracking-[0.08em] text-ink-3 transition-colors;
+    font-feature-settings: "ss01", "cv11";
   }
+  .gcir-topnav-btn:hover { color: var(--ink); background: rgba(12,16,14,0.05); }
   .gcir-topnav-btn[data-active="true"] {
-    @apply bg-bg-3 text-ink;
+    color: var(--ink);
+    background: rgba(12,16,14,0.06);
+    box-shadow: inset 0 -2px 0 var(--accent);
   }
 
+  /* — Pills, tags, chips — */
   .gcir-pill {
-    @apply inline-flex h-[30px] items-center gap-1.5 rounded-full border border-line bg-bg px-2.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-bg-2;
+    @apply inline-flex h-[28px] items-center gap-1.5 rounded-full border px-2.5 text-[11.5px] font-medium tracking-[0.02em] text-ink-2 transition-colors;
+    border-color: var(--line);
+    background: rgba(255,253,247,0.65);
   }
+  .gcir-pill:hover { background: var(--bone-2); border-color: var(--bone-4); }
 
   .gcir-icon-btn {
-    @apply inline-flex h-8 w-8 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-bg-3 hover:text-ink;
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-[5px] text-ink-3 transition-colors;
   }
+  .gcir-icon-btn:hover { background: rgba(12,16,14,0.06); color: var(--ink); }
 
+  /* — Buttons — */
   .gcir-btn {
-    @apply inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-white px-3 text-[12.5px] font-medium text-ink-2 transition-all hover:border-stone-300 hover:bg-bg-2;
+    @apply inline-flex h-8 items-center gap-1.5 rounded-[5px] border px-3 text-[12px] font-medium tracking-[0.02em] text-ink-2 transition-all;
+    border-color: var(--line);
+    background: rgba(255,253,247,0.85);
+  }
+  .gcir-btn:hover {
+    border-color: var(--ink);
+    background: var(--bone);
+    box-shadow: 0 1px 0 rgba(12,16,14,0.04);
   }
   .gcir-btn-primary {
-    @apply gcir-btn border-ink bg-ink text-white shadow-sm hover:bg-black;
+    @apply inline-flex h-8 items-center gap-1.5 rounded-[5px] px-3 text-[12px] font-semibold tracking-[0.02em] text-bone transition-all;
+    background: var(--ink);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), 0 1px 0 rgba(12,16,14,0.16);
   }
+  .gcir-btn-primary:hover { background: #000; box-shadow: inset 0 0 0 1px rgba(233,165,57,0.4), 0 0 0 1px rgba(233,165,57,0.4); }
 
+  .gcir-btn-accent {
+    @apply inline-flex h-8 items-center gap-1.5 rounded-[5px] px-3 text-[12px] font-semibold tracking-[0.02em] text-ink transition-all;
+    background: var(--accent);
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.10), 0 1px 0 rgba(12,16,14,0.12);
+  }
+  .gcir-btn-accent:hover { background: #f4b94f; box-shadow: 0 0 0 1px var(--accent), 0 6px 18px rgba(233,165,57,0.32); }
+
+  /* — Tab — */
   .gcir-tab {
-    @apply whitespace-nowrap border-b-2 border-transparent py-2.5 text-[13px] font-medium text-muted transition-colors hover:text-ink-2;
-    margin-right: 18px;
+    @apply whitespace-nowrap py-2.5 text-[12.5px] font-medium uppercase tracking-[0.08em] text-muted transition-colors;
+    margin-right: 22px;
+    border-bottom: 2px solid transparent;
+    font-feature-settings: "ss01";
   }
+  .gcir-tab:hover { color: var(--ink-2); }
   .gcir-tab[data-active="true"] {
-    @apply border-ink font-semibold text-ink;
+    border-bottom-color: var(--accent);
+    color: var(--ink);
+    font-weight: 600;
   }
 
+  /* — Filter rail row — */
   .gcir-rail-row {
-    @apply flex cursor-pointer select-none items-center justify-between rounded-md px-2 py-1.5 text-[13px] text-ink-2 transition-colors hover:bg-bg-3;
+    @apply flex cursor-pointer select-none items-center justify-between rounded-[5px] px-2 py-[7px] text-[12.5px] text-ink-2 transition-colors;
   }
+  .gcir-rail-row:hover { background: rgba(12,16,14,0.04); }
   .gcir-rail-row[data-active="true"] {
-    @apply border border-line bg-white shadow-sm;
+    background: rgba(255,253,247,0.95);
+    border: 1px solid var(--line);
+    box-shadow: 0 1px 0 rgba(12,16,14,0.04);
   }
 
+  /* — Section header (eyebrow) — */
   .gcir-section-h {
-    @apply mb-2.5 mt-5 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.06em] text-muted;
+    @apply mb-2.5 mt-5 flex items-center justify-between text-[10.5px] font-semibold uppercase tracking-[0.18em] text-muted;
   }
 
+  /* — Tag (small inline data chip) — */
   .gcir-tag {
-    @apply inline-flex items-center gap-1 rounded border border-line-2 bg-bg-3 px-1.5 py-px text-[10.5px] font-medium leading-relaxed text-muted;
+    @apply inline-flex items-center gap-1 rounded-[3px] border px-1.5 py-px text-[10.5px] font-medium tracking-[0.02em] leading-relaxed text-muted;
+    border-color: var(--line-2);
+    background: rgba(255,253,247,0.75);
   }
-  .gcir-tag .dot {
-    @apply h-[5px] w-[5px] rounded-full;
-  }
+  .gcir-tag .dot { @apply h-[5px] w-[5px] rounded-full; }
 
+  /* — Score / confidence — */
   .gcir-score-chip {
-    @apply rounded-md px-1.5 py-px font-mono text-[11.5px] font-semibold;
+    @apply rounded-[4px] px-1.5 py-px font-mono text-[11.5px] font-semibold;
+  }
+  .gcir-conf-pill {
+    @apply inline-flex items-center gap-1 rounded-[3px] border px-1.5 py-px text-[10.5px] font-medium text-muted;
+    border-color: var(--line-2);
+    background: rgba(255,253,247,0.75);
   }
 
-  .gcir-conf-pill {
-    @apply inline-flex items-center gap-1 rounded border border-line-2 bg-bg-3 px-1.5 py-px text-[10.5px] font-medium text-muted;
+  /* ── Eyebrow (section number + label) ─────────────────────────────────── */
+  .gcir-eyebrow {
+    @apply mb-2 inline-flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.18em] text-accent-ink;
+    font-feature-settings: "ss01";
+  }
+  .gcir-eyebrow .num {
+    @apply font-mono text-[10px] text-muted;
+  }
+  .gcir-eyebrow::before {
+    content: "";
+    display: inline-block;
+    width: 18px;
+    height: 1px;
+    background: currentColor;
+    opacity: 0.6;
+  }
+
+  /* ── Horizon rule — section divider with marker ──────────────────────── */
+  .gcir-horizon {
+    @apply relative h-px w-full;
+    background: var(--line);
+  }
+  .gcir-horizon::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: -2.5px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--bone);
+  }
+
+  /* ── Spec / "data sheet" key-value row ───────────────────────────────── */
+  .gcir-spec-row {
+    @apply flex items-baseline gap-3 py-1.5;
+  }
+  .gcir-spec-row::before {
+    content: "";
+    flex: 1 1 auto;
+    border-bottom: 1px dotted var(--line);
+    margin: 0 6px;
+    transform: translateY(-3px);
+    order: 2;
+  }
+  .gcir-spec-row > .label {
+    @apply text-[11.5px] uppercase tracking-[0.10em] text-muted;
+    order: 1;
+    flex: 0 0 auto;
+  }
+  .gcir-spec-row > .value {
+    @apply font-mono text-[12.5px] font-semibold text-ink;
+    order: 3;
+    flex: 0 0 auto;
+  }
+
+  /* ── Card — bone surface — */
+  .gcir-card {
+    @apply rounded-[7px];
+    background: rgba(255,253,247,0.85);
+    border: 1px solid var(--line);
+    box-shadow: 0 1px 0 rgba(12,16,14,0.03);
+  }
+
+  /* ── Industrial blueprint texture ────────────────────────────────────── */
+  .gcir-blueprint {
+    background-image:
+      linear-gradient(rgba(12,16,14,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(12,16,14,0.04) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  .gcir-blueprint-dark {
+    background-image:
+      linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  /* ── Coordinate label (lat/long monospace) ───────────────────────────── */
+  .gcir-coord {
+    @apply font-mono text-[10.5px] uppercase tracking-[0.10em] text-muted;
   }
 }
 
-/* hide scrollbar utility */
+/* ──────────────────────────────────────────────────────────────────────────
+   Scrollbar
+   ────────────────────────────────────────────────────────────────────────── */
 .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
 .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #d6d3d1;
+  background: var(--bone-4);
   border: 2px solid transparent;
   background-clip: padding-box;
   border-radius: 8px;
 }
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: var(--ink-4); background-clip: padding-box; }
 
-/* maplibre overrides */
-.maplibregl-ctrl-attrib { font-size: 10px !important; background: rgb(255 255 255 / 0.85) !important; }
-
-/* ── Landing page animations ─────────────────────────────────────────── */
-@keyframes fade-up {
-  from { opacity: 0; transform: translateY(18px); }
-  to   { opacity: 1; transform: translateY(0); }
+/* ──────────────────────────────────────────────────────────────────────────
+   MapLibre overrides
+   ────────────────────────────────────────────────────────────────────────── */
+.maplibregl-ctrl-attrib {
+  font-size: 10px !important;
+  background: rgba(12,16,14,0.78) !important;
+  color: rgba(244,237,224,0.65) !important;
+  font-family: "JetBrains Mono", ui-monospace, monospace !important;
 }
-.animate-fade-up {
-  animation: fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+.maplibregl-ctrl-attrib a { color: rgba(244,237,224,0.85) !important; }
+.maplibregl-ctrl-group {
+  background: rgba(12,16,14,0.78) !important;
+  border: 1px solid rgba(244,237,224,0.18) !important;
+  border-radius: 6px !important;
+  overflow: hidden;
+}
+.maplibregl-ctrl-group button {
+  background: transparent !important;
+  filter: invert(1) hue-rotate(180deg);
+}
+.maplibregl-ctrl-scale {
+  background: rgba(12,16,14,0.78) !important;
+  color: rgba(244,237,224,0.85) !important;
+  border-color: rgba(244,237,224,0.4) !important;
+  font-family: "JetBrains Mono", ui-monospace, monospace !important;
+  font-size: 10px !important;
 }
 
-/* Radial vignette helper for landing hero */
+/* ──────────────────────────────────────────────────────────────────────────
+   Vintage motion
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Radial vignette for dark hero */
 .bg-radial-vignette {
-  background: radial-gradient(ellipse 80% 60% at 50% 50%, transparent 40%, #0a0a0a 100%);
+  background: radial-gradient(ellipse 90% 70% at 50% 50%, transparent 38%, rgba(12,16,14,0.96) 100%);
 }
 
-/* Ping animation for live dot (already in Tailwind but ensure it's available) */
-@keyframes ping {
-  75%, 100% { transform: scale(2); opacity: 0; }
+/* CRT scan-line overlay */
+.gcir-scanlines {
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(255,255,255,0) 0,
+    rgba(255,255,255,0) 2px,
+    rgba(255,255,255,0.025) 3px,
+    rgba(255,255,255,0) 4px
+  );
 }
-.animate-ping {
-  animation: ping 1.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+
+/* Vertical scanning bar (used inside dark cards) */
+.gcir-scan-bar {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 0%, rgba(233,165,57,0.10) 50%, transparent 100%);
+  height: 30%;
+  animation: scan 9s linear infinite;
+  mix-blend-mode: screen;
+}
+
+/* Pulsing live dot — phosphor green */
+@keyframes ping-phosphor {
+  0%   { transform: scale(1);   opacity: 0.7; }
+  70%  { transform: scale(2.6); opacity: 0;   }
+  100% { transform: scale(2.6); opacity: 0;   }
+}
+.gcir-ping {
+  animation: ping-phosphor 2s cubic-bezier(0,0,0.2,1) infinite;
+}
+
+/* Animated count-up underline */
+@keyframes underline-grow {
+  0%   { transform: scaleX(0); transform-origin: left; }
+  100% { transform: scaleX(1); transform-origin: left; }
+}
+.gcir-underline-grow { animation: underline-grow 0.9s cubic-bezier(0.22,1,0.36,1) both; }
+
+/* Stagger fade-up — reveals each child one after the next */
+.gcir-stagger > * { opacity: 0; animation: fade-up-stagger 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.gcir-stagger > *:nth-child(1) { animation-delay: 0.04s; }
+.gcir-stagger > *:nth-child(2) { animation-delay: 0.10s; }
+.gcir-stagger > *:nth-child(3) { animation-delay: 0.16s; }
+.gcir-stagger > *:nth-child(4) { animation-delay: 0.22s; }
+.gcir-stagger > *:nth-child(5) { animation-delay: 0.28s; }
+.gcir-stagger > *:nth-child(6) { animation-delay: 0.34s; }
+.gcir-stagger > *:nth-child(7) { animation-delay: 0.40s; }
+.gcir-stagger > *:nth-child(8) { animation-delay: 0.46s; }
+.gcir-stagger > *:nth-child(9) { animation-delay: 0.52s; }
+.gcir-stagger > *:nth-child(10) { animation-delay: 0.58s; }
+@keyframes fade-up-stagger {
+  0%   { opacity: 0; transform: translateY(14px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Hairline divider used between landing sections */
+.gcir-hairline {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(244,237,224,0.18) 12%, rgba(244,237,224,0.18) 88%, transparent);
+}
+.gcir-hairline-light {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(12,16,14,0.16) 12%, rgba(12,16,14,0.16) 88%, transparent);
+}
+
+/* Marquee/ticker gradient mask */
+.gcir-ticker-mask {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
+          mask-image: linear-gradient(90deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
+}
+
+/* Blurred radar sweep — used as backing on dark hero */
+.gcir-sweep {
+  position: absolute;
+  inset: -10%;
+  background: conic-gradient(from 0deg, transparent 0deg, transparent 300deg, rgba(233,165,57,0.18) 350deg, rgba(233,165,57,0.4) 359deg, transparent 360deg);
+  filter: blur(8px);
+  animation: sweep 7s linear infinite;
+  pointer-events: none;
+}
+
+/* Animated count-up stat */
+.gcir-stat-num {
+  font-family: "Instrument Serif", ui-serif, serif;
+  font-feature-settings: "lnum", "tnum";
+  letter-spacing: -0.02em;
 }

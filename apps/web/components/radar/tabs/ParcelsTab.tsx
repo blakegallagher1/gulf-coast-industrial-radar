@@ -255,8 +255,16 @@ export function ParcelsTab({
       <div className="grid grid-cols-3 gap-2.5">
         <StatCard label="Signal parcels" value={String(featureCount)} note="with boundary data" />
         <StatCard label="Total acres" value={fmtAcres(totalSignalAcres)} note="from signal geometry" />
-        <StatCard label="Formal interests" value={String(formalParcels.length)} note="tracked in DB" />
+        <StatCard label="Formal interests" value={String(formalParcels.length)} note="ParcelInterest rows in DB" />
       </div>
+
+      {featureCount > 0 && formalParcels.length === 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-amber-900">
+          Parcel geometry is present from LAND_CONTROL signals, but no formal parcel-interest chain is
+          linked to this project yet. Treat the map as signal evidence, not a confirmed Site →
+          ParcelInterest → Parcel record set.
+        </div>
+      )}
 
       {/* ── legend ──────────────────────────────────────────────── */}
       <div className="rounded-lg border border-line bg-bg-2 px-4 py-3">

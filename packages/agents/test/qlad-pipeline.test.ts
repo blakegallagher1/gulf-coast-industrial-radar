@@ -135,6 +135,7 @@ function buildDbMock(overrides: { publicCoverageFound?: boolean } = {}) {
       prisma: {
         signal: {
           findMany: vi.fn(async () => signals),
+          updateMany: vi.fn(async () => ({ count: signals.length })),
         },
         entityLink: {
           findMany: vi.fn(async () => [
@@ -244,7 +245,10 @@ describe("qlad-pipeline (Deliverable 3 smoke test)", () => {
         SignalFamily,
         ActionKind,
         prisma: {
-          signal: { findMany: vi.fn(async () => signals) },
+          signal: {
+            findMany: vi.fn(async () => signals),
+            updateMany: vi.fn(async () => ({ count: signals.length })),
+          },
           entityLink: {
             findMany: vi.fn(async () => [
               { fromId: "e-1", toId: "e-2" },
@@ -420,7 +424,10 @@ describe("qlad-pipeline (Deliverable 3 smoke test)", () => {
         SignalFamily,
         ActionKind,
         prisma: {
-          signal: { findMany: vi.fn(async () => signals) },
+          signal: {
+            findMany: vi.fn(async () => signals),
+            updateMany: vi.fn(async () => ({ count: signals.length })),
+          },
           entityLink: {
             findMany: vi.fn(async () => [
               { fromId: "e-1", toId: "e-2" },

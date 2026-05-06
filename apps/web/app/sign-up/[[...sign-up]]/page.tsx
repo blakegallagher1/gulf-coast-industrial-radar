@@ -1,54 +1,71 @@
 import { SignUp } from "@clerk/nextjs";
-import { Radar } from "lucide-react";
 import Link from "next/link";
 
 export default function Page() {
   return (
-    <main className="flex min-h-screen bg-[#0a0a0a]">
+    <main className="relative flex min-h-screen overflow-hidden bg-[#0c100e]">
+      {/* Background sweep */}
+      <div className="pointer-events-none absolute -left-1/4 top-1/2 aspect-square w-[1100px] -translate-y-1/2 opacity-30">
+        <div className="gcir-sweep absolute inset-0 rounded-full" />
+        <div className="absolute inset-[18%] rounded-full border border-bone/[0.05]" />
+        <div className="absolute inset-[36%] rounded-full border border-bone/[0.05]" />
+      </div>
+      <div className="gcir-blueprint-dark pointer-events-none absolute inset-0 opacity-50" />
+
       {/* Left panel */}
-      <div className="hidden flex-col justify-between p-12 lg:flex lg:w-[480px] border-r border-white/[0.06]">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-white/[0.08] ring-1 ring-white/[0.12]">
-            <Radar className="h-3.5 w-3.5 text-[#10a37f]" strokeWidth={1.8} />
+      <div className="relative z-10 hidden flex-col justify-between p-12 lg:flex lg:w-[480px] border-r border-bone/[0.08]">
+        <Link href="/" className="flex items-center gap-3">
+          <BrandMark />
+          <div className="flex items-baseline gap-2">
+            <span className="font-display text-[19px] tracking-[-0.01em] text-bone">Brick &amp; Yield</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.20em] text-bone/40">est. 26</span>
           </div>
-          <Link href="/" className="text-[13.5px] font-semibold tracking-[-0.01em] text-white">
-            Brick &amp; Yield
-          </Link>
-        </div>
-        <div className="space-y-8">
+        </Link>
+
+        <div className="space-y-9">
           {[
             { stat: "13,700+", label: "Signals archived from public sources" },
             { stat: "730d",    label: "Longest lead time in backtest" },
-            { stat: "10",      label: "Validated known projects" },
-          ].map((s) => (
-            <div key={s.stat}>
-              <div className="font-mono text-[36px] font-semibold tracking-tight text-white">
+            { stat: "10/10",   label: "Validated projects detected ahead" },
+          ].map((s, idx) => (
+            <div key={s.stat} className="group">
+              <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
+                <span>§{String(idx + 1).padStart(2, "0")}</span>
+                <span className="h-px w-8 bg-accent/40" />
+              </div>
+              <div className="mt-2 font-display text-[44px] leading-none tracking-[-0.025em] text-bone">
                 {s.stat}
               </div>
-              <div className="mt-1 text-[13px] text-white/35">{s.label}</div>
+              <div className="mt-2 text-[12.5px] leading-relaxed text-bone/45">{s.label}</div>
             </div>
           ))}
         </div>
-        <div className="text-[12px] text-white/20">
-          Free access · all features unlocked
+
+        <div className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-bone/30">
+          free access · full platform · no credit card
         </div>
       </div>
 
       {/* Right panel */}
-      <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
+      <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm">
-          <div className="mb-8 lg:hidden flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-white/[0.08] ring-1 ring-white/[0.12]">
-              <Radar className="h-3.5 w-3.5 text-[#10a37f]" strokeWidth={1.8} />
-            </div>
-            <span className="text-[13.5px] font-semibold text-white">Brick &amp; Yield</span>
+          <div className="mb-9 flex items-center gap-3 lg:hidden">
+            <BrandMark />
+            <span className="font-display text-[18px] tracking-[-0.01em] text-bone">Brick &amp; Yield</span>
           </div>
-          <h2 className="mb-2 text-[22px] font-semibold tracking-[-0.02em] text-white">
-            Create your account
+
+          <div className="gcir-eyebrow text-accent">
+            <span className="num">§U1</span>
+            <span>Get access</span>
+          </div>
+
+          <h2 className="mt-3 font-display text-[42px] leading-[1.0] tracking-[-0.022em] text-bone">
+            Open the radar.
           </h2>
-          <p className="mb-7 text-[13.5px] text-white/40">
-            Full platform access. No credit card required.
+          <p className="mt-3 mb-7 text-[14px] leading-relaxed text-bone/55">
+            Full platform access for Gulf Coast operators, investors, and developers.
           </p>
+
           <SignUp
             appearance={{
               elements: {
@@ -57,29 +74,42 @@ export default function Page() {
                 headerTitle: "hidden",
                 headerSubtitle: "hidden",
                 socialButtonsBlockButton:
-                  "bg-white/[0.06] border border-white/[0.1] text-white hover:bg-white/[0.1] transition-colors rounded-lg h-10 text-[13px] font-medium",
-                socialButtonsBlockButtonText: "text-white/80",
-                dividerLine: "bg-white/[0.08]",
-                dividerText: "text-white/30 text-[12px]",
-                formFieldLabel: "text-white/50 text-[12.5px] font-medium",
+                  "bg-bone/[0.04] border border-bone/[0.10] text-bone hover:bg-bone/[0.08] transition-colors rounded-[5px] h-10 text-[13px] font-medium",
+                socialButtonsBlockButtonText: "text-bone/85",
+                dividerLine: "bg-bone/[0.08]",
+                dividerText: "text-bone/35 text-[11px] uppercase tracking-[0.14em]",
+                formFieldLabel: "text-bone/55 text-[11.5px] font-medium uppercase tracking-[0.10em]",
                 formFieldInput:
-                  "bg-white/[0.05] border border-white/[0.1] text-white placeholder:text-white/25 rounded-lg h-10 text-[13.5px] focus:border-[#10a37f]/60 focus:ring-0",
+                  "bg-bone/[0.04] border border-bone/[0.10] text-bone placeholder:text-bone/25 rounded-[5px] h-10 text-[14px] focus:border-[#e9a539]/60 focus:ring-0",
                 formButtonPrimary:
-                  "bg-white text-[#0a0a0a] hover:bg-white/90 font-semibold rounded-lg h-10 text-[14px]",
-                footerActionLink: "text-[#10a37f] hover:text-[#10a37f]/80",
-                footerActionText: "text-white/35 text-[12.5px]",
-                identityPreviewText: "text-white/60",
-                identityPreviewEditButton: "text-[#10a37f]",
-                formResendCodeLink: "text-[#10a37f]",
+                  "bg-[#e9a539] text-[#0c100e] hover:bg-[#f4b94f] font-semibold uppercase tracking-[0.08em] rounded-[5px] h-10 text-[12.5px]",
+                footerActionLink: "text-[#e9a539] hover:text-[#f4b94f]",
+                footerActionText: "text-bone/35 text-[12px]",
+                identityPreviewText: "text-bone/60",
+                identityPreviewEditButton: "text-[#e9a539]",
+                formResendCodeLink: "text-[#e9a539]",
                 otpCodeFieldInput:
-                  "bg-white/[0.05] border border-white/[0.1] text-white rounded-lg",
-                alertText: "text-white/70",
-                alert: "bg-white/[0.04] border border-white/[0.08] rounded-lg",
+                  "bg-bone/[0.04] border border-bone/[0.10] text-bone rounded-[5px]",
+                alertText: "text-bone/75",
+                alert: "bg-bone/[0.04] border border-bone/[0.08] rounded-[5px]",
               },
             }}
           />
         </div>
       </div>
     </main>
+  );
+}
+
+function BrandMark() {
+  return (
+    <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-[5px] border border-bone/15 bg-bone/[0.04] backdrop-blur">
+      <svg viewBox="0 0 32 32" className="h-5 w-5" fill="none" stroke="#e9a539" strokeWidth="1.4">
+        <circle cx="16" cy="16" r="13" />
+        <circle cx="16" cy="16" r="8" opacity=".55" />
+        <line x1="16" y1="16" x2="26" y2="6" stroke="#e9a539" strokeWidth="2" />
+        <circle cx="16" cy="16" r="2.5" fill="#e9a539" stroke="none" />
+      </svg>
+    </span>
   );
 }

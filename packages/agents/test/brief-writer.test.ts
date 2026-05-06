@@ -6,6 +6,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 let lastBackendArgs: Record<string, unknown> | null = null;
 let lastBriefCreate: Record<string, unknown> | null = null;
+let projectFindManyMock: ReturnType<typeof vi.fn>;
+let watchlistFindManyMock: ReturnType<typeof vi.fn>;
 
 const TOP_PROJECTS = [
   { publicId: "PRJ-2026-08114", name: "Aurora Steel Donaldsonville", parishCounty: "Ascension", stage: "FINANCING_SURFACED", score: 94 },
@@ -20,7 +22,10 @@ const SOURCES = [
 vi.mock("@gcir/db", () => ({
   prisma: {
     project: {
-      findMany: vi.fn(async () => TOP_PROJECTS),
+      findMany: (...args: unknown[]) => projectFindManyMock(...args),
+    },
+    watchlist: {
+      findMany: (...args: unknown[]) => watchlistFindManyMock(...args),
     },
     source: {
       findMany: vi.fn(async () => SOURCES),
@@ -76,6 +81,30 @@ import { writeWeeklyBrief } from "../src/brief-writer";
 beforeEach(() => {
   lastBackendArgs = null;
   lastBriefCreate = null;
+  projectFindManyMock = vi.fn(async ({ take }: { take?: number } = {}) => {
+    if (take === 5) {
+      return TOP_PROJECTS.slice(0, 1);
+    }
+    return TOP_PROJECTS;
+  });
+  watchlistFindManyMock = vi.fn(async () => [
+    {
+      id: "wl-1",
+      name: "Quiet Assembly Focus",
+      items: [
+        {
+          project: {
+            id: "project-aurora",
+            publicId: "PRJ-2026-08114",
+            name: "Aurora Steel Donaldsonville",
+            parishCounty: "Ascension",
+            stage: "FINANCING_SURFACED",
+            score: 94,
+          },
+        },
+      ],
+    },
+  ]);
 });
 
 describe("writeWeeklyBrief", () => {
@@ -90,6 +119,7 @@ describe("writeWeeklyBrief", () => {
     const routing = lastBackendArgs!.perplexity as { preset?: string; rawModel?: string };
     expect(routing.preset).toBe("deep");
     expect(routing.rawModel).toBeUndefined();
+    expect(lastBackendArgs!.user).toEqual(expect.stringContaining("FOLLOWED_WATCHLIST"));
 
     // Brief row contains the agent's output + computed source health
     expect(lastBriefCreate).not.toBeNull();
@@ -97,6 +127,12 @@ describe("writeWeeklyBrief", () => {
     expect(lastBriefCreate!.issueNumber).toBe(27);
     const movers = lastBriefCreate!.topMovers as Array<{ publicId: string }>;
     expect(movers[0].publicId).toBe("PRJ-2026-08114");
+    const sourceHealth = lastBriefCreate!.sourceHealth as {
+      followedWatchlists?: Array<{ name: string }>;
+      watchlistFocus?: Array<{ projectPublicId: string }>;
+    };
+    expect(sourceHealth.followedWatchlists?.[0]?.name).toBe("Quiet Assembly Focus");
+    expect(sourceHealth.watchlistFocus?.[0]?.projectPublicId).toBe("PRJ-2026-08114");
   });
 
   it("starts at issueNumber=1 when no prior briefs exist", async () => {

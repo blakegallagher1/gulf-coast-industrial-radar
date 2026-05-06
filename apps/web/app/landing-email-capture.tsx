@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight } from "lucide-react";
+import { ArrowUpRight, Check } from "lucide-react";
 
 export function EmailCapture({ dark = false }: { dark?: boolean }) {
   const [email, setEmail] = useState("");
@@ -25,28 +25,39 @@ export function EmailCapture({ dark = false }: { dark?: boolean }) {
 
   if (status === "done") {
     return (
-      <p className={`text-[14px] font-medium ${dark ? "text-[#10a37f]" : "text-accent"}`}>
-        Check your inbox — a sample brief is on the way.
-      </p>
+      <div className={`inline-flex items-center gap-2.5 rounded-[4px] border px-4 py-3 text-[13px] font-medium ${dark ? "border-[#7dd6a3]/30 bg-[#7dd6a3]/[0.06] text-[#7dd6a3]" : "border-info/30 bg-info/[0.06] text-info"}`}>
+        <Check className="h-4 w-4" strokeWidth={2.4} />
+        Logged. Sample brief is on its way to <span className="font-semibold">{email}</span>.
+      </div>
     );
   }
 
   if (dark) {
     return (
-      <form onSubmit={handleSubmit} className="flex w-full max-w-sm gap-2">
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@company.com"
-          className="h-11 flex-1 rounded-lg border border-white/[0.1] bg-white/[0.05] px-4 text-[13.5px] text-white placeholder:text-white/25 focus:border-[#10a37f]/60 focus:outline-none focus:ring-0 transition-colors"
-        />
+      <form onSubmit={handleSubmit} className="flex w-full max-w-md flex-col gap-2 sm:flex-row">
+        <div className="relative flex-1">
+          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-mono text-[10.5px] uppercase tracking-[0.16em] text-bone/35">
+            inbox
+          </span>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+            className="h-12 w-full rounded-[4px] border border-bone/[0.12] bg-bone/[0.04] pl-[68px] pr-4 font-sans text-[14px] text-bone placeholder:text-bone/30 transition-colors focus:border-[#e9a539]/60 focus:outline-none focus:ring-0"
+          />
+        </div>
         <button
           type="submit"
           disabled={status === "sending"}
-          className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-white px-5 text-[13px] font-semibold text-[#0a0a0a] transition-colors hover:bg-white/90 disabled:opacity-50"
+          className="group inline-flex h-12 items-center gap-2 rounded-[4px] bg-[#e9a539] px-6 text-[12.5px] font-semibold uppercase tracking-[0.10em] text-[#0c100e] transition-all hover:bg-[#f4b94f] hover:shadow-[0_0_0_1px_#e9a539,0_8px_24px_rgba(233,165,57,0.34)] disabled:opacity-60"
         >
-          {status === "sending" ? "…" : <><span>Send</span><ArrowRight className="h-3.5 w-3.5" /></>}
+          {status === "sending" ? "Transmitting…" : (
+            <>
+              Send sample
+              <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" strokeWidth={2.2} />
+            </>
+          )}
         </button>
       </form>
     );
@@ -59,14 +70,14 @@ export function EmailCapture({ dark = false }: { dark?: boolean }) {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         placeholder="you@company.com"
-        className="h-10 w-64 rounded-lg border border-stone-700 bg-stone-800 px-3 text-[13px] text-white placeholder:text-stone-500 focus:border-accent focus:outline-none"
+        className="h-10 w-64 rounded-[4px] border border-line bg-bone-2 px-3 text-[13px] text-ink placeholder:text-muted-2 focus:border-accent focus:outline-none"
       />
       <button
         type="submit"
         disabled={status === "sending"}
-        className="h-10 rounded-lg bg-white px-5 text-[13px] font-semibold text-ink transition-colors hover:bg-stone-100"
+        className="h-10 rounded-[4px] bg-ink px-5 text-[12.5px] font-semibold uppercase tracking-[0.08em] text-bone transition-colors hover:bg-black"
       >
-        {status === "sending" ? "Sending..." : "Get a free sample brief"}
+        {status === "sending" ? "Sending…" : "Get sample brief"}
       </button>
     </form>
   );

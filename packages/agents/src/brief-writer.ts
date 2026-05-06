@@ -53,17 +53,74 @@ export async function writeWeeklyBrief(window?: { start: Date; end: Date }): Pro
   const end = window?.end ?? new Date();
   const start = window?.start ?? new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  // Top movers
-  const top = await prisma.project.findMany({
-    where: { score: { gt: 50 } },
-    orderBy: [{ score: "desc" }],
-    take: 7,
+  const followedWatchlists = await prisma.watchlist.findMany({
+    where: {
+      AND: [
+        { filter: { path: ["followed"], equals: true } },
+        { filter: { path: ["deliveryMode"], equals: "weekly_brief" } },
+      ],
+    },
+    select: {
+      id: true,
+      name: true,
+      items: {
+        select: {
+          project: {
+            select: {
+              id: true,
+              publicId: true,
+              name: true,
+              parishCounty: true,
+              stage: true,
+              score: true,
+            },
+          },
+        },
+      },
+    },
   });
 
+  const followedProjectsById = new Map<
+    string,
+    {
+      id: string;
+      publicId: string;
+      name: string;
+      parishCounty: string | null;
+      stage: string;
+      score: number;
+    }
+  >();
+
+  for (const watchlist of followedWatchlists) {
+    for (const item of watchlist.items) {
+      followedProjectsById.set(item.project.id, item.project);
+    }
+  }
+
+  const followedTop = Array.from(followedProjectsById.values())
+    .filter((project) => project.score > 50)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 7);
+
+  const remainingSlots = Math.max(0, 7 - followedTop.length);
+  const globalTop = remainingSlots
+    ? await prisma.project.findMany({
+        where: {
+          score: { gt: 50 },
+          id: { notIn: followedTop.map((project) => project.id) },
+        },
+        orderBy: [{ score: "desc" }],
+        take: remainingSlots,
+      })
+    : [];
+
+  const top = [...followedTop, ...globalTop];
+  const followedSet = new Set(followedTop.map((project) => project.id));
   const topBlock = top
     .map(
       (p) =>
-        `- ${p.publicId} · ${p.name} · ${p.parishCounty ?? "?"} · stage ${p.stage} · score ${p.score}`,
+        `- ${p.publicId} · ${p.name} · ${p.parishCounty ?? "?"} · stage ${p.stage} · score ${p.score}${followedSet.has(p.id) ? " · FOLLOWED_WATCHLIST" : ""}`,
     )
     .join("\n");
 
@@ -101,6 +158,18 @@ export async function writeWeeklyBrief(window?: { start: Date; end: Date }): Pro
       recommendedActions: out.data.recommendedActions as never,
       sourceHealth: {
         items: sources.map((s) => ({ name: s.name, status: s.status, lastError: s.lastError })),
+        followedWatchlists: followedWatchlists.map((watchlist) => ({ id: watchlist.id, name: watchlist.name })),
+        watchlistFocus: followedTop.map((project) => {
+          const owners = followedWatchlists
+            .filter((watchlist) => watchlist.items.some((item) => item.project.id === project.id))
+            .map((watchlist) => watchlist.name);
+          return {
+            projectPublicId: project.publicId,
+            projectName: project.name,
+            score: project.score,
+            watchlistNames: owners,
+          };
+        }),
       } as never,
     },
   });

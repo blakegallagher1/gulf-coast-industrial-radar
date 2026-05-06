@@ -50,10 +50,10 @@ export function bandClasses(band: "high" | "elevated" | "watch" | "weak" | "nois
   ring: string;
 } {
   switch (band) {
-    case "high":     return { bg: "bg-crit/[0.08]",  text: "text-crit",       ring: "border-crit"      };
-    case "elevated": return { bg: "bg-warn/[0.08]",  text: "text-warn",       ring: "border-warn"      };
-    case "watch":    return { bg: "bg-info/[0.08]",  text: "text-info",       ring: "border-info"      };
-    case "weak":     return { bg: "bg-bg-3",         text: "text-muted",      ring: "border-stone-400" };
-    default:         return { bg: "bg-bg-3",         text: "text-muted-2",    ring: "border-line"      };
+    case "high":     return { bg: "bg-crit/[0.10]",  text: "text-crit",       ring: "border-crit/40"   };
+    case "elevated": return { bg: "bg-accent/[0.14]",text: "text-accent-ink", ring: "border-accent/40" };
+    case "watch":    return { bg: "bg-info/[0.10]",  text: "text-info",       ring: "border-info/40"   };
+    case "weak":     return { bg: "bg-bone-3/60",    text: "text-muted",      ring: "border-line"      };
+    default:         return { bg: "bg-bone-3/60",    text: "text-muted-2",    ring: "border-line"      };
   }
 }

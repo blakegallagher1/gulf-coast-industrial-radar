@@ -123,6 +123,7 @@ export async function tickQlad(): Promise<QladTickResult> {
 
     // Find or create the Project this cluster represents
     const project = await upsertProject(c);
+    await linkSignalsToProject(project.id, c.signalIds);
 
     // 3c — optional Perplexity validation
     let validation: ValidationOutput | null = null;
@@ -568,6 +569,15 @@ async function ensureParcelInterests(siteId: string, c: ClusterCandidate): Promi
       },
     });
   }
+}
+
+async function linkSignalsToProject(projectId: string, signalIds: string[]): Promise<void> {
+  if (signalIds.length === 0) return;
+
+  await prisma.signal.updateMany({
+    where: { id: { in: signalIds } },
+    data: { projectId },
+  });
 }
 
 async function resolveBuyerEntityId(value: string, state: string): Promise<string | null> {

@@ -19,6 +19,33 @@ function normalizeEmails(values: string[] | undefined): string[] {
   );
 }
 
+async function loadFollowedWatchlistEmails(): Promise<string[]> {
+  const watchlists = await prisma.watchlist.findMany({
+    where: {
+      AND: [
+        { filter: { path: ["followed"], equals: true } },
+        { filter: { path: ["deliveryMode"], equals: "weekly_brief" } },
+      ],
+      userId: { not: null },
+    },
+    select: {
+      user: {
+        select: {
+          email: true,
+        },
+      },
+    },
+  });
+
+  return Array.from(
+    new Set(
+      watchlists
+        .map((watchlist) => watchlist.user?.email?.trim().toLowerCase())
+        .filter((email): email is string => Boolean(email && email.includes("@"))),
+    ),
+  );
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -28,7 +55,9 @@ export async function POST(
 
   const { id } = await params;
   const body = (await req.json().catch(() => null)) as PublishBody | null;
-  const emails = normalizeEmails(body?.emails);
+  const manualEmails = normalizeEmails(body?.emails);
+  const followerEmails = await loadFollowedWatchlistEmails();
+  const emails = Array.from(new Set([...manualEmails, ...followerEmails]));
 
   const brief = await prisma.brief.findUnique({
     where: { id },
@@ -102,5 +131,6 @@ export async function POST(
     ok: true,
     publishedAt: publishedAt.toISOString(),
     queuedRecipients: newEmails.length,
+    followedWatchlistRecipients: followerEmails.length,
   });
 }

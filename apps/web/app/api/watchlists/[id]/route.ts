@@ -35,10 +35,15 @@ export async function PATCH(
       ? (existing.filter as Record<string, unknown>)
       : {};
 
+  const nextFollowed = body?.followed ?? false;
+  const nextDeliveryMode = nextFollowed
+    ? body?.deliveryMode ?? "weekly_brief"
+    : "manual";
+
   const nextFilter = {
     ...currentFilter,
-    followed: body?.followed ?? false,
-    deliveryMode: body?.deliveryMode ?? "manual",
+    followed: nextFollowed,
+    deliveryMode: nextDeliveryMode,
   };
 
   await prisma.watchlist.update({
@@ -49,7 +54,7 @@ export async function PATCH(
   return NextResponse.json({
     ok: true,
     watchlistId: id,
-    followed: nextFilter.followed,
-    deliveryMode: nextFilter.deliveryMode,
+    followed: nextFollowed,
+    deliveryMode: nextDeliveryMode,
   });
 }

@@ -3,18 +3,19 @@ import {
   SIGNAL_FAMILY_LABELS,
   SIGNAL_WEIGHTS,
 } from "@gcir/shared";
+import { PageHeader } from "@/components/page-header";
 
 const FAMILY_COLOR: Record<string, string> = {
-  LAND_CONTROL: "#10a37f",
-  ENVIRONMENTAL_PERMIT: "#1f5fa8",
-  INCENTIVE: "#ca8a04",
-  UTILITY_POWER: "#7e22ce",
-  ENTITY_FORMATION: "#6b6b6b",
-  PORT_TERMINAL: "#0891b2",
-  PUBLIC_COMPANY: "#dc2626",
-  LOCAL_AGENDA: "#475569",
-  FINANCING: "#b3261e",
-  PROCUREMENT: "#1f5fa8",
+  LAND_CONTROL:        "#2f7575",
+  ENVIRONMENTAL_PERMIT: "#3b6ea5",
+  INCENTIVE:            "#a87016",
+  UTILITY_POWER:        "#7a4ab8",
+  ENTITY_FORMATION:     "#7a847f",
+  PORT_TERMINAL:        "#1f8aa3",
+  PUBLIC_COMPANY:       "#c9402a",
+  LOCAL_AGENDA:         "#5b6b66",
+  FINANCING:            "#a52e1a",
+  PROCUREMENT:          "#3b6ea5",
 };
 
 const DESC: Record<string, { what: string; watches: string }> = {
@@ -61,37 +62,64 @@ const DESC: Record<string, { what: string; watches: string }> = {
 };
 
 export default function SignalsReference() {
-  return (
-    <main className="mx-auto max-w-[1120px] flex-1 overflow-y-auto px-10 py-9">
-      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Reference</div>
-      <h1 className="mb-1 text-[36px] font-semibold leading-[1.1] tracking-tighter">
-        Signal taxonomy
-      </h1>
-      <p className="mb-6 text-[15.5px] text-muted-2">
-        Ten signal families with starting weights. The radar's project-formation score is a weighted composite across all that fire.
-      </p>
+  const totalWeight = SIGNAL_FAMILIES.reduce((sum, fam) => sum + SIGNAL_WEIGHTS[fam], 0);
 
-      <div className="mt-6 grid grid-cols-2 gap-3.5">
-        {SIGNAL_FAMILIES.map((fam) => (
-          <article
-            key={fam}
-            className="rounded-md border border-line bg-white px-5 py-4 transition-all hover:border-stone-300 hover:shadow-sm"
-          >
-            <header className="mb-1.5 flex items-start justify-between gap-2">
-              <h3 className="m-0 flex items-center gap-2 text-[15px] font-semibold leading-tight tracking-tight">
-                <span className="h-2.5 w-2.5 rounded-sm" style={{ background: FAMILY_COLOR[fam] }} />
-                {SIGNAL_FAMILY_LABELS[fam]}
-              </h3>
-              <span className="rounded border border-line-2 bg-bg-2 px-1.5 py-px font-mono text-[11px] font-semibold text-muted">
-                w · {SIGNAL_WEIGHTS[fam]}
-              </span>
-            </header>
-            <p className="mb-2.5 text-[13px] leading-relaxed text-ink-3">{DESC[fam]?.what}</p>
-            <p className="text-[12px] leading-snug text-muted">
-              <strong className="font-semibold text-ink-2">Watches:</strong> {DESC[fam]?.watches}
-            </p>
-          </article>
-        ))}
+  return (
+    <main className="mx-auto max-w-[1180px] flex-1 overflow-y-auto px-10 py-12">
+      <PageHeader
+        sectionCode="§T"
+        eyebrow="Signal taxonomy"
+        title="Ten signal families."
+        titleAccent="One weighted composite."
+        description="The radar's project-formation score is a weighted composite across all signal families that fire. Every weight is honest. Every contributor inspectable. No proprietary aggregators."
+        meta={`Σ weights = ${totalWeight}`}
+      />
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {SIGNAL_FAMILIES.map((fam, idx) => {
+          const color = FAMILY_COLOR[fam] ?? "#0c100e";
+          const weight = SIGNAL_WEIGHTS[fam];
+          return (
+            <article
+              key={fam}
+              className="group relative overflow-hidden rounded-[7px] border border-line bg-bone p-6 transition-all hover:-translate-y-0.5 hover:border-ink/30 hover:shadow-md"
+            >
+              {/* Color bar */}
+              <span className="absolute left-0 top-0 h-full w-[3px]" style={{ background: color }} />
+
+              <header className="mb-3 flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
+                    {String(idx + 1).padStart(2, "0")}
+                  </span>
+                  <h3 className="font-display text-[24px] leading-tight tracking-tight text-ink">
+                    {SIGNAL_FAMILY_LABELS[fam]}
+                  </h3>
+                </div>
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  <div className="relative h-1 w-16 overflow-hidden rounded-full bg-bone-3">
+                    <div
+                      className="h-full transition-all"
+                      style={{ width: `${(weight / 25) * 100}%`, background: color }}
+                    />
+                  </div>
+                  <span className="rounded-[3px] border border-line bg-bone-2 px-2 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-ink-2">
+                    w · {weight}
+                  </span>
+                </div>
+              </header>
+
+              <p className="text-[13.5px] leading-[1.65] text-ink-3">{DESC[fam]?.what}</p>
+
+              <div className="gcir-horizon mt-4 opacity-50" />
+
+              <p className="mt-3.5 text-[12.5px] leading-[1.6] text-muted">
+                <strong className="mr-2 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-2">watches</strong>
+                {DESC[fam]?.watches}
+              </p>
+            </article>
+          );
+        })}
       </div>
     </main>
   );

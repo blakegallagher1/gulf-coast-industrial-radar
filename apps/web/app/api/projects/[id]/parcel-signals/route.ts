@@ -2,7 +2,7 @@
  * GET /api/projects/[id]/parcel-signals
  *
  * Returns a GeoJSON FeatureCollection built from LAND_CONTROL Signal payloads
- * that are spatially near the project's primary site centroid.
+ * linked directly to the project.
  * Each feature carries: owner, parcelNumber, acres, zoning, floodZone, saleYear.
  */
 
@@ -35,32 +35,20 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  const project = await prisma.project.findUnique({
-    where: { id },
-    include: { sites: { take: 1, orderBy: { createdAt: "asc" } } },
+  const signals = await prisma.signal.findMany({
+    where: {
+      projectId: id,
+      family: "LAND_CONTROL",
+    },
+    orderBy: { observedAt: "desc" },
+    select: {
+      id: true,
+      subjectLabel: true,
+      observedAt: true,
+      payload: true,
+    },
+    take: 2000,
   });
-
-  if (!project || !project.sites[0]?.centerLat || !project.sites[0]?.centerLng) {
-    return NextResponse.json({ type: "FeatureCollection", features: [] });
-  }
-
-  const lat = project.sites[0].centerLat;
-  const lng = project.sites[0].centerLng;
-  const RADIUS = 0.18;
-
-  const signals = await prisma.$queryRaw<
-    Array<{ id: string; subjectLabel: string; observedAt: Date; payload: unknown }>
-  >`
-    SELECT id, "subjectLabel", "observedAt", payload
-    FROM "Signal"
-    WHERE family = 'LAND_CONTROL'
-      AND (payload->'geometry'->'rings'->0->0->1)::float
-          BETWEEN ${lat - RADIUS} AND ${lat + RADIUS}
-      AND (payload->'geometry'->'rings'->0->0->0)::float
-          BETWEEN ${lng - RADIUS} AND ${lng + RADIUS}
-    ORDER BY "observedAt" DESC
-    LIMIT 2000
-  `;
 
   const features: GeoJSON.Feature[] = [];
 

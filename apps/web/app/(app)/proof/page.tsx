@@ -4,6 +4,8 @@ import { prisma, auroraProject, validationProjectsPart1, validationProjectsPart2
 import { runBacktest } from "@gcir/scoring";
 import { fmtDate } from "@/lib/format";
 import { UsageEventTracker } from "@/components/usage-event-tracker";
+import { PageHeader } from "@/components/page-header";
+import { ShieldCheck } from "lucide-react";
 import { RecoveryActions } from "./recovery-actions";
 
 export const dynamic = "force-dynamic";
@@ -27,12 +29,12 @@ function checklistStatus(passed: boolean): { label: string; className: string } 
   if (passed) {
     return {
       label: "met",
-      className: "bg-accent/[0.06] text-accent-ink ring-accent/30",
+      className: "bg-info/[0.10] text-info ring-info/30",
     };
   }
   return {
     label: "gap",
-    className: "bg-warn/[0.06] text-warn ring-warn/30",
+    className: "bg-accent/[0.14] text-accent-ink ring-accent/40",
   };
 }
 
@@ -421,7 +423,7 @@ export default async function ProofPage() {
   ];
 
   return (
-    <main className="mx-auto max-w-[1180px] flex-1 overflow-y-auto px-10 py-10">
+    <main className="mx-auto max-w-[1180px] flex-1 overflow-y-auto px-10 py-12">
       <UsageEventTracker
         eventType="page_view"
         surface="proof"
@@ -430,20 +432,20 @@ export default async function ProofPage() {
           alertCount: pipeline.alertCount,
         }}
       />
-      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-        Trust proof
-      </div>
-      <h1 className="mb-2 text-[38px] font-semibold leading-[1.05] tracking-tighter text-ink">
-        Launch-readiness evidence
-      </h1>
-      <p className="max-w-[860px] text-[15.5px] leading-relaxed text-muted-2">
-        This page maps the product promise to current evidence in the database. It is
-        not a marketing surface. It is the operating proof for whether the radar is
-        actually ready to earn trust with investors, developers, and adjacent project teams.
-      </p>
-      <div className="mt-3 font-mono text-[11.5px] text-muted">
-        Last successful backtest run: {lastBacktestRun ? fmtDate(lastBacktestRun.completedAt) : "not persisted yet"}
-      </div>
+
+      <PageHeader
+        sectionCode="§P"
+        eyebrow="Trust proof · launch-readiness"
+        title="The operating proof."
+        titleAccent="Not a marketing surface."
+        description="This page maps the product promise to current evidence in the database. It is the operating proof for whether the radar is ready to earn trust with investors, developers, and adjacent project teams."
+        meta={
+          <span className="inline-flex items-center gap-1.5">
+            <ShieldCheck className="h-3 w-3" />
+            Last backtest · {lastBacktestRun ? fmtDate(lastBacktestRun.completedAt) : "not persisted"}
+          </span>
+        }
+      />
 
       <section className="mt-8 grid grid-cols-4 gap-3">
         <MetricCard
@@ -468,8 +470,8 @@ export default async function ProofPage() {
         />
       </section>
 
-      <section className="mt-10 rounded-md border border-line bg-white">
-        <div className="border-b border-line bg-bg-2 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+      <section className="mt-10 overflow-hidden rounded-[7px] border border-line bg-bone shadow-sm">
+        <div className="border-b border-line bg-bone-2/70 px-4 py-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-ink">
           Acceptance checklist against current evidence
         </div>
         <div className="divide-y divide-line">
@@ -494,8 +496,8 @@ export default async function ProofPage() {
       </section>
 
       <section className="mt-10 grid grid-cols-[1.1fr_0.9fr] gap-6">
-        <div className="rounded-md border border-line bg-white">
-          <div className="border-b border-line bg-bg-2 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+        <div className="overflow-hidden rounded-[7px] border border-line bg-bone shadow-sm">
+          <div className="border-b border-line bg-bone-2/70 px-4 py-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-ink">
             Corridor and parish coverage
           </div>
           <div className="px-4 py-4">
@@ -508,7 +510,7 @@ export default async function ProofPage() {
               {Object.entries(corridorCounts).map(([name, count]) => (
                 <div
                   key={name}
-                  className="rounded-full border border-line bg-bg-2 px-3 py-1.5 text-[12px] text-ink-2"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-line bg-bone px-3 py-1.5 text-[12px] text-ink-2 transition-colors hover:border-ink/30"
                 >
                   <span className="font-semibold text-ink">{name}</span>{" "}
                   <span className="font-mono text-[11.5px] text-muted">· {count}</span>
@@ -518,14 +520,14 @@ export default async function ProofPage() {
           </div>
         </div>
 
-        <div className="rounded-md border border-line bg-white">
-          <div className="border-b border-line bg-bg-2 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+        <div className="overflow-hidden rounded-[7px] border border-line bg-bone shadow-sm">
+          <div className="border-b border-line bg-bone-2/70 px-4 py-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-ink">
             Source freshness bands
           </div>
           <div className="grid grid-cols-3 gap-3 px-4 py-4">
-            <MetricMini label="Fresh <24h" value={String(freshnessCounts.fresh)} tone="text-emerald-700" />
-            <MetricMini label="Stale <72h" value={String(freshnessCounts.stale)} tone="text-amber-700" />
-            <MetricMini label="Offline >72h" value={String(freshnessCounts.offline)} tone="text-red-700" />
+            <MetricMini label="Fresh <24h" value={String(freshnessCounts.fresh)} tone="text-info" />
+            <MetricMini label="Stale <72h" value={String(freshnessCounts.stale)} tone="text-accent-ink" />
+            <MetricMini label="Offline >72h" value={String(freshnessCounts.offline)} tone="text-crit" />
           </div>
           <div className="px-4 pb-4 text-[12px] leading-snug text-muted">
             Freshness uses `lastOkAt`, not product copy, so the team can separate real uptime from stated intent.
@@ -533,8 +535,8 @@ export default async function ProofPage() {
         </div>
       </section>
 
-      <section className="mt-10 rounded-md border border-line bg-white">
-        <div className="border-b border-line bg-bg-2 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+      <section className="mt-10 overflow-hidden rounded-[7px] border border-line bg-bone shadow-sm">
+        <div className="border-b border-line bg-bone-2/70 px-4 py-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-ink">
           Pipeline state
         </div>
         <div className="grid grid-cols-7 gap-3 px-4 py-4">
@@ -548,36 +550,38 @@ export default async function ProofPage() {
         </div>
         <div className="border-t border-line px-4 py-4">
           {formationGap ? (
-            <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-[13px] leading-snug text-amber-900">
+            <div className="rounded-[5px] border border-accent/40 bg-accent/[0.10] px-4 py-3 text-[13px] leading-[1.6] text-accent-ink">
+              <span className="mr-2 font-mono text-[10px] font-semibold uppercase tracking-[0.16em]">⚠ gap</span>
               Evidence ingestion is live, but investor-facing formation objects are not materializing yet. Signals exist without downstream projects or alerts, which usually means the live formation worker path is disabled or stalled.
             </div>
           ) : (
-            <div className="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-3 text-[13px] leading-snug text-emerald-900">
+            <div className="rounded-[5px] border border-info/40 bg-info/[0.10] px-4 py-3 text-[13px] leading-[1.6] text-info">
+              <span className="mr-2 font-mono text-[10px] font-semibold uppercase tracking-[0.16em]">✓ ok</span>
               Downstream formation objects are present. The live pipeline is producing investor-facing entities beyond raw evidence.
             </div>
           )}
         </div>
       </section>
 
-      <section className="mt-6 rounded-md border border-line bg-white">
-        <div className="border-b border-line bg-bg-2 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+      <section className="mt-6 overflow-hidden rounded-[7px] border border-line bg-bone shadow-sm">
+        <div className="border-b border-line bg-bone-2/70 px-4 py-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-ink">
           Runtime gate diagnostics
         </div>
         <div className="grid grid-cols-3 gap-3 px-4 py-4">
           <MetricMini
             label="Worker cron"
             value={runtimeFlags.workerCronEnabled ? "on" : "off"}
-            tone={runtimeFlags.workerCronEnabled ? "text-emerald-700" : "text-red-700"}
+            tone={runtimeFlags.workerCronEnabled ? "text-info" : "text-crit"}
           />
           <MetricMini
             label="QLAD live"
             value={runtimeFlags.qladLiveEnabled ? "on" : "off"}
-            tone={runtimeFlags.qladLiveEnabled ? "text-emerald-700" : "text-red-700"}
+            tone={runtimeFlags.qladLiveEnabled ? "text-info" : "text-crit"}
           />
           <MetricMini
             label="PPLX validate"
             value={runtimeFlags.perplexityValidationEnabled ? "on" : "off"}
-            tone={runtimeFlags.perplexityValidationEnabled ? "text-emerald-700" : "text-amber-700"}
+            tone={runtimeFlags.perplexityValidationEnabled ? "text-info" : "text-accent-ink"}
           />
         </div>
         <div className="border-t border-line px-4 py-4 text-[12px] leading-snug text-muted">
@@ -585,22 +589,22 @@ export default async function ProofPage() {
         </div>
       </section>
 
-      <section className="mt-6 rounded-md border border-line bg-white">
-        <div className="border-b border-line bg-bg-2 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+      <section className="mt-6 overflow-hidden rounded-[7px] border border-line bg-bone shadow-sm">
+        <div className="border-b border-line bg-bone-2/70 px-4 py-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-ink">
           Candidate queue state
         </div>
         <div className="grid grid-cols-3 gap-3 px-4 py-4">
           <MetricMini label="Visible queue" value={String(candidateQueue.length)} tone="text-ink" />
-          <MetricMini label="Tracked" value={String(trackedCandidateQueueCount)} tone="text-emerald-700" />
-          <MetricMini label="Promotable" value={String(promotableCandidateQueueCount)} tone="text-amber-700" />
+          <MetricMini label="Tracked" value={String(trackedCandidateQueueCount)} tone="text-info" />
+          <MetricMini label="Promotable" value={String(promotableCandidateQueueCount)} tone="text-accent-ink" />
         </div>
         <div className="border-t border-line px-4 py-4 text-[12px] leading-snug text-muted">
           This reflects the current non-QLAD emerging-candidate window. A high promotable count means the operator can still widen tracked-project breadth without waiting for a new quiet-assembly cluster.
         </div>
       </section>
 
-      <section className="mt-6 rounded-md border border-line bg-white">
-        <div className="border-b border-line bg-bg-2 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+      <section className="mt-6 overflow-hidden rounded-[7px] border border-line bg-bone shadow-sm">
+        <div className="border-b border-line bg-bone-2/70 px-4 py-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-ink">
           Usage telemetry snapshot
         </div>
         <div className="grid grid-cols-11 gap-3 px-4 py-4">
@@ -621,8 +625,8 @@ export default async function ProofPage() {
         </div>
       </section>
 
-      <section className="mt-6 rounded-md border border-line bg-white">
-        <div className="border-b border-line bg-bg-2 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+      <section className="mt-6 overflow-hidden rounded-[7px] border border-line bg-bone shadow-sm">
+        <div className="border-b border-line bg-bone-2/70 px-4 py-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-ink">
           Recent activity window
         </div>
         <div className="grid grid-cols-6 gap-3 px-4 py-4">
@@ -638,8 +642,8 @@ export default async function ProofPage() {
         </div>
       </section>
 
-      <section className="mt-6 rounded-md border border-line bg-white">
-        <div className="border-b border-line bg-bg-2 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+      <section className="mt-6 overflow-hidden rounded-[7px] border border-line bg-bone shadow-sm">
+        <div className="border-b border-line bg-bone-2/70 px-4 py-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-ink">
           24-hour graph growth
         </div>
         <div className="grid grid-cols-5 gap-3 px-4 py-4">
@@ -654,8 +658,8 @@ export default async function ProofPage() {
         </div>
       </section>
 
-      <section className="mt-6 rounded-md border border-line bg-white">
-        <div className="border-b border-line bg-bg-2 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+      <section className="mt-6 overflow-hidden rounded-[7px] border border-line bg-bone shadow-sm">
+        <div className="border-b border-line bg-bone-2/70 px-4 py-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-ink">
           Spread loop funnel
         </div>
         <div className="grid grid-cols-6 gap-3 px-4 py-4">
@@ -678,16 +682,16 @@ export default async function ProofPage() {
       <RecoveryActions showQladRecovery={showQladRecovery} />
 
       <section className="mt-10">
-        <header className="mb-3.5 flex items-baseline justify-between border-b border-line pb-2.5">
-          <h2 className="text-[18px] font-semibold tracking-tight text-ink">
+        <header className="mb-4 flex items-baseline justify-between">
+          <h2 className="font-display text-[26px] leading-tight tracking-tight text-ink">
             Validation backtest scoreboard
           </h2>
           <span className="font-mono text-[11.5px] text-muted">
             {backtest.projects.length} seeded public-project fixtures
           </span>
         </header>
-        <div className="overflow-hidden rounded-md border border-line">
-          <div className="grid grid-cols-[110px_1.5fr_150px_120px_120px_120px_110px] border-b border-line bg-bg-2 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+        <div className="overflow-hidden rounded-[7px] border border-line bg-bone shadow-sm">
+          <div className="grid grid-cols-[110px_1.5fr_150px_120px_120px_120px_110px] border-b border-line bg-bone-2/70 px-4 py-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
             <div>Project</div>
             <div>Name</div>
             <div>Geography</div>
@@ -729,15 +733,15 @@ export default async function ProofPage() {
 
       <section className="mt-10 grid grid-cols-[0.95fr_0.95fr_1.1fr] gap-6">
         <div>
-          <header className="mb-3.5 flex items-baseline justify-between border-b border-line pb-2.5">
-            <h2 className="text-[18px] font-semibold tracking-tight text-ink">
+          <header className="mb-4 flex items-baseline justify-between">
+            <h2 className="font-display text-[26px] leading-tight tracking-tight text-ink">
               Recent watchlists
             </h2>
             <Link href="/watchlists" className="font-mono text-[11.5px] text-muted underline decoration-line decoration-1 underline-offset-2 hover:text-ink">
               Open watchlists
             </Link>
           </header>
-          <div className="overflow-hidden rounded-md border border-line bg-white">
+          <div className="overflow-hidden rounded-[7px] border border-line bg-bone shadow-sm">
             {recentWatchlists.length === 0 && (
               <div className="px-4 py-8 text-sm text-muted">
                 No watchlists exist yet.
@@ -747,7 +751,7 @@ export default async function ProofPage() {
               <Link
                 key={watchlist.id}
                 href={`/watchlists/${watchlist.id}`}
-                className="block border-b border-line px-4 py-3.5 last:border-b-0 hover:bg-bg-2"
+                className="block border-b border-line px-4 py-3.5 last:border-b-0 hover:bg-bone-2/60"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[14px] font-semibold tracking-tight text-ink">
@@ -766,16 +770,16 @@ export default async function ProofPage() {
         </div>
 
         <div>
-          <header className="mb-3.5 flex items-baseline justify-between border-b border-line pb-2.5">
-            <h2 className="text-[18px] font-semibold tracking-tight text-ink">
+          <header className="mb-4 flex items-baseline justify-between">
+            <h2 className="font-display text-[26px] leading-tight tracking-tight text-ink">
               Source health
             </h2>
             <Link href="/sources" className="font-mono text-[11.5px] text-muted underline decoration-line decoration-1 underline-offset-2 hover:text-ink">
               Open full registry
             </Link>
           </header>
-          <div className="overflow-hidden rounded-md border border-line">
-            <div className="grid grid-cols-[1.2fr_120px_140px_140px_1fr] border-b border-line bg-bg-2 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+          <div className="overflow-hidden rounded-[7px] border border-line bg-bone">
+            <div className="grid grid-cols-[1.2fr_120px_140px_140px_1fr] border-b border-line bg-bone-2/70 px-4 py-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
               <div>Source</div>
               <div>Status</div>
               <div>Last run</div>
@@ -811,15 +815,15 @@ export default async function ProofPage() {
         </div>
 
         <div>
-          <header className="mb-3.5 flex items-baseline justify-between border-b border-line pb-2.5">
-            <h2 className="text-[18px] font-semibold tracking-tight text-ink">
+          <header className="mb-4 flex items-baseline justify-between">
+            <h2 className="font-display text-[26px] leading-tight tracking-tight text-ink">
               Brief delivery
             </h2>
             <Link href="/briefs" className="font-mono text-[11.5px] text-muted underline decoration-line decoration-1 underline-offset-2 hover:text-ink">
               Open briefs
             </Link>
           </header>
-          <div className="overflow-hidden rounded-md border border-line bg-white">
+          <div className="overflow-hidden rounded-[7px] border border-line bg-bone shadow-sm">
             {recentRecipients.length === 0 && (
               <div className="px-4 py-8 text-sm text-muted">
                 No queued recipients exist yet.
@@ -829,7 +833,7 @@ export default async function ProofPage() {
               <Link
                 key={recipient.id}
                 href={`/briefs/${recipient.brief.id}`}
-                className="block border-b border-line px-4 py-3.5 last:border-b-0 hover:bg-bg-2"
+                className="block border-b border-line px-4 py-3.5 last:border-b-0 hover:bg-bone-2/60"
               >
                 <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
                   Issue {recipient.brief.issueNumber}
@@ -859,14 +863,14 @@ function MetricCard({
   note: string;
 }) {
   return (
-    <div className="rounded-md border border-line bg-bg-2 px-4 py-3.5">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+    <div className="rounded-[6px] border border-line bg-bone px-4 py-4 shadow-sm">
+      <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
         {label}
       </div>
-      <div className="mt-1 font-mono text-[28px] font-semibold tracking-tight text-ink">
+      <div className="mt-2 font-display text-[36px] leading-none tracking-[-0.025em] text-ink">
         {value}
       </div>
-      <div className="mt-1 text-[12px] text-muted">{note}</div>
+      <div className="mt-1.5 text-[11.5px] leading-tight text-muted">{note}</div>
     </div>
   );
 }
@@ -881,11 +885,11 @@ function MetricMini({
   tone: string;
 }) {
   return (
-    <div className="rounded-md border border-line bg-bg-2 px-3.5 py-3">
-      <div className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted">
+    <div className="rounded-[5px] border border-line bg-bone px-3 py-3">
+      <div className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.16em] text-muted">
         {label}
       </div>
-      <div className={`mt-1 font-mono text-[22px] font-semibold tracking-tight ${tone}`}>
+      <div className={`mt-1.5 font-display text-[24px] leading-none tracking-[-0.02em] ${tone}`}>
         {value}
       </div>
     </div>

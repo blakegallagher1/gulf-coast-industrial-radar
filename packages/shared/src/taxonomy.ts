@@ -79,21 +79,23 @@ export const STAGE_LABELS: Record<ProjectStage, string> = {
   CONSTRUCTION: "construction",
 };
 
-/** Stage badge color tokens — used by the alert chip + drawer. */
+/** Stage badge color tokens — used by the alert chip + drawer.
+ *  Pilot House palette: phosphor amber for signal, cinnabar for hazard,
+ *  patina teal for watch, ochre & violet for permits, ink for confirmed. */
 export const STAGE_COLOR: Record<ProjectStage, string> = {
-  WATCH: "#a8a29e",
-  SITE_CONTROL: "#10a37f",
-  ENTITY_FORMED: "#6b6b6b",
-  INCENTIVE_SURFACED: "#ca8a04",
-  PERMIT_SURFACED: "#1f5fa8",
-  WETLANDS_WATERWAY_SURFACED: "#0e7490",
-  UTILITY_SURFACED: "#7e22ce",
-  PORT_AGENDA_SURFACED: "#0891b2",
-  FINANCING_SURFACED: "#b3261e",
-  PUBLIC_ANNOUNCED: "#0d0d0d",
-  FID: "#0d0d0d",
-  EPC: "#0d0d0d",
-  CONSTRUCTION: "#0d0d0d",
+  WATCH: "#9aa39e",
+  SITE_CONTROL: "#2f7575",
+  ENTITY_FORMED: "#7a847f",
+  INCENTIVE_SURFACED: "#a87016",
+  PERMIT_SURFACED: "#3b6ea5",
+  WETLANDS_WATERWAY_SURFACED: "#317b85",
+  UTILITY_SURFACED: "#7a4ab8",
+  PORT_AGENDA_SURFACED: "#1f8aa3",
+  FINANCING_SURFACED: "#c9402a",
+  PUBLIC_ANNOUNCED: "#0c100e",
+  FID: "#0c100e",
+  EPC: "#0c100e",
+  CONSTRUCTION: "#0c100e",
 };
 
 /** Score bands — radar markers and chips use these. */
@@ -113,11 +115,11 @@ export const BAND_LABEL: Record<ScoreBand, string> = {
   noise: "Background",
 };
 export const BAND_COLOR: Record<ScoreBand, string> = {
-  high: "#b3261e",
-  elevated: "#c97a16",
-  watch: "#1f5fa8",
-  weak: "#a8a29e",
-  noise: "#d4d4d4",
+  high: "#c9402a",       // cinnabar — hazard / hot formation
+  elevated: "#e9a539",   // phosphor amber — primary signal
+  watch: "#2f7575",      // patina teal — being watched
+  weak: "#7a847f",       // muted green-grey — early / weak
+  noise: "#9aa39e",      // muted-2 — background
 };
 
 /** Recommended-action kinds (mirrors investor-action-logic.md). */

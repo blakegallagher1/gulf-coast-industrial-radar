@@ -2,14 +2,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@gcir/db";
 import { findTopPromotableCandidates } from "../../candidates/_lib/find-top-candidates";
 import { promoteCandidate } from "../../candidates/_lib/promote-candidate";
+import { verifyCronAuthorization } from "@/lib/cron-auth";
 
 export async function POST(req: Request) {
-  const auth = req.headers.get("authorization") ?? "";
-  const token = process.env.CRON_SECRET ?? process.env.HEALTHCHECK_TOKEN;
-  const expected = token ? `Bearer ${token}` : null;
-  if (expected && auth !== expected) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const authFailure = verifyCronAuthorization(req);
+  if (authFailure) return authFailure;
 
   try {
     const candidates = await findTopPromotableCandidates(3);
