@@ -7,6 +7,16 @@
 
 import { prisma } from "./index";
 
+type GeoJsonPolygon = {
+  type: "Polygon";
+  coordinates: number[][][];
+};
+
+type GeoJsonMultiPolygon = {
+  type: "MultiPolygon";
+  coordinates: number[][][][];
+};
+
 /** Convert a GeoJSON polygon / multipolygon to PostGIS geometry text. */
 export function toGeoSql(geojson: unknown): string {
   return JSON.stringify(geojson);
@@ -15,7 +25,7 @@ export function toGeoSql(geojson: unknown): string {
 /** Update a parcel's geometry from GeoJSON. */
 export async function setParcelGeometry(
   parcelId: string,
-  geojson: GeoJSON.MultiPolygon | GeoJSON.Polygon,
+  geojson: GeoJsonMultiPolygon | GeoJsonPolygon,
 ): Promise<void> {
   const text = toGeoSql(
     geojson.type === "MultiPolygon"
@@ -32,7 +42,7 @@ export async function setParcelGeometry(
 /** Set a site's footprint geometry. */
 export async function setSiteGeometry(
   siteId: string,
-  geojson: GeoJSON.MultiPolygon,
+  geojson: GeoJsonMultiPolygon,
 ): Promise<void> {
   await prisma.$executeRawUnsafe(
     `UPDATE "Site" SET geom = ST_SetSRID(ST_GeomFromGeoJSON($1), 4326) WHERE id = $2`,
@@ -61,7 +71,7 @@ export async function parcelsWithinRadius(
 export async function assemblageStats(parcelIds: string[]): Promise<{
   totalAcres: number;
   contiguousAcres: number;
-  envelope: GeoJSON.Polygon | null;
+  envelope: GeoJsonPolygon | null;
 }> {
   if (parcelIds.length === 0) {
     return { totalAcres: 0, contiguousAcres: 0, envelope: null };
