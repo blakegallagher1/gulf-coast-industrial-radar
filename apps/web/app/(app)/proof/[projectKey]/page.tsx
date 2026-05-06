@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@gcir/db";
-import { runBacktest } from "@/lib/backtest";
+import { runBacktest } from "@gcir/scoring";
 import { fmtDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
