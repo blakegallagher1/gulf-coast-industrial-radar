@@ -3,26 +3,38 @@
   "geometryType": "esriGeometryPolygon",
   "spatialReference": { "wkid": 4326 },
   "fields": [
-    { "name": "ASMT", "type": "esriFieldTypeString" },
+    { "name": "ASSESSMENT_NUM", "type": "esriFieldTypeString" },
+    { "name": "PRONO", "type": "esriFieldTypeInteger" },
     { "name": "OWNER", "type": "esriFieldTypeString" },
-    { "name": "ACRES", "type": "esriFieldTypeDouble" },
-    { "name": "ADDRESS", "type": "esriFieldTypeString" },
-    { "name": "ZONING", "type": "esriFieldTypeString" },
-    { "name": "LAST_EDIT", "type": "esriFieldTypeDate" },
-    { "name": "SALE_DATE", "type": "esriFieldTypeDate" },
-    { "name": "SALE_PRICE", "type": "esriFieldTypeDouble" }
+    { "name": "OWNER_ADDRESS", "type": "esriFieldTypeString" },
+    { "name": "OWNER_CITY_STATE_ZIP", "type": "esriFieldTypeString" },
+    { "name": "PHYSICAL_ADDRESS", "type": "esriFieldTypeString" },
+    { "name": "SUBDIVISION", "type": "esriFieldTypeString" },
+    { "name": "WARD_SECTION", "type": "esriFieldTypeString" },
+    { "name": "LEGAL_DESCRIPTION", "type": "esriFieldTypeString" },
+    { "name": "FLOOD_ZONE", "type": "esriFieldTypeString" },
+    { "name": "SALE_YEAR", "type": "esriFieldTypeString" },
+    { "name": "STATUS", "type": "esriFieldTypeString" },
+    { "name": "SUM_FAIR_MARKET_VALUE", "type": "esriFieldTypeDouble" },
+    { "name": "SUM_ASSESSED_VALUE", "type": "esriFieldTypeDouble" }
   ],
   "features": [
     {
       "attributes": {
-        "ASMT": "01-0055-0001",
+        "ASSESSMENT_NUM": "01-0055-0001",
+        "PRONO": 10055,
         "OWNER": "PORT ALLEN INDUSTRIAL CAPITAL LLC",
-        "ACRES": 88.3,
-        "ADDRESS": "3100 N RIVER RD, PORT ALLEN LA 70767",
-        "ZONING": "HI",
-        "LAST_EDIT": 1743465600000,
-        "SALE_DATE": 1743465600000,
-        "SALE_PRICE": 1950000
+        "OWNER_ADDRESS": "3100 N RIVER RD",
+        "OWNER_CITY_STATE_ZIP": "PORT ALLEN LA 70767",
+        "PHYSICAL_ADDRESS": "3100 N RIVER RD",
+        "SUBDIVISION": "INDUSTRIAL TRACT",
+        "WARD_SECTION": "1-5",
+        "LEGAL_DESCRIPTION": "TRACT A",
+        "FLOOD_ZONE": "X",
+        "SALE_YEAR": "2025",
+        "STATUS": "ACTIVE",
+        "SUM_FAIR_MARKET_VALUE": 1950000,
+        "SUM_ASSESSED_VALUE": 292500
       },
       "geometry": {
         "rings": [[[-91.20, 30.45], [-91.19, 30.45], [-91.19, 30.44], [-91.20, 30.44], [-91.20, 30.45]]]
@@ -30,14 +42,20 @@
     },
     {
       "attributes": {
-        "ASMT": "01-0055-0002",
+        "ASSESSMENT_NUM": "01-0055-0002",
+        "PRONO": 10056,
         "OWNER": "IBERVILLE RIVER HOLDINGS LLC",
-        "ACRES": 122.1,
-        "ADDRESS": "0 HWY 1, PORT ALLEN LA 70767",
-        "ZONING": "HI",
-        "LAST_EDIT": 1743552000000,
-        "SALE_DATE": null,
-        "SALE_PRICE": null
+        "OWNER_ADDRESS": "0 HWY 1",
+        "OWNER_CITY_STATE_ZIP": "PORT ALLEN LA 70767",
+        "PHYSICAL_ADDRESS": "0 HWY 1",
+        "SUBDIVISION": "RIVER INDUSTRIAL",
+        "WARD_SECTION": "1-5",
+        "LEGAL_DESCRIPTION": "TRACT B",
+        "FLOOD_ZONE": "AE",
+        "SALE_YEAR": null,
+        "STATUS": "ACTIVE",
+        "SUM_FAIR_MARKET_VALUE": 2442000,
+        "SUM_ASSESSED_VALUE": 366300
       },
       "geometry": {
         "rings": [[[-91.21, 30.45], [-91.20, 30.45], [-91.20, 30.44], [-91.21, 30.44], [-91.21, 30.45]]]

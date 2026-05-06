@@ -33,7 +33,6 @@
 import type { SourceAdapter, AdapterContext, AdapterResult, AdapterRecord } from "./types";
 import { fetchWithRetry } from "./utils/fetch-with-retry";
 
-const KEY = process.env.SAM_GOV_API_KEY;
 // Corrected — research artifact confirms "/prod/" is required in the path.
 const BASE = "https://api.sam.gov/prod/opportunities/v2/search";
 
@@ -42,12 +41,13 @@ export const samGovAdapter: SourceAdapter = {
   family: "PROCUREMENT",
   implemented: true,
   async run(ctx: AdapterContext): Promise<AdapterResult> {
-    if (!KEY) {
+    const key = process.env.SAM_GOV_API_KEY;
+    if (!key) {
       return { records: [], notes: "SAM.gov: SAM_GOV_API_KEY not set; skipping" };
     }
     const since = ctx.since ?? daysAgo(7);
     const url = new URL(BASE);
-    url.searchParams.set("api_key", KEY);
+    url.searchParams.set("api_key", key);
     url.searchParams.set("limit", "50");
     url.searchParams.set("postedFrom", fmtDate(since));
     url.searchParams.set("postedTo", fmtDate(new Date()));

@@ -1,5 +1,4 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
-import { mockFetchOnce } from "./helpers/mockFetch";
 import { fakeContext } from "./helpers/adapterContext";
 import { samGovAdapter } from "../src/sam-gov";
 
@@ -13,7 +12,26 @@ describe("sam-gov adapter", () => {
   });
 
   it("parses opportunitiesData into PROCUREMENT signals", async () => {
-    mockFetchOnce("sam-gov-opportunities.json", "application/json");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            opportunitiesData: [
+              {
+                noticeId: "a1",
+                title: "Test Solicitation",
+                type: "Solicitation",
+                postedDate: "2026-05-01",
+                uiLink: "https://sam.gov/opp/a1/view",
+                placeOfPerformance: { state: { name: "Louisiana" } },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
     const result = await samGovAdapter.run(fakeContext("sam-gov"));
     expect(result.records.length).toBeGreaterThan(0);
     const r = result.records[0];
@@ -23,7 +41,17 @@ describe("sam-gov adapter", () => {
   });
 
   it("maps Solicitation type to procurement.federal.solicitation", async () => {
-    mockFetchOnce("sam-gov-opportunities.json", "application/json");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            opportunitiesData: [{ noticeId: "a1", title: "X", type: "Solicitation", placeOfPerformance: { state: { name: "LA" } } }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
     const result = await samGovAdapter.run(fakeContext("sam-gov"));
     const solicit = result.records.find((r) =>
       r.payload.type === "Solicitation",
@@ -32,7 +60,17 @@ describe("sam-gov adapter", () => {
   });
 
   it("maps Award Notice type to procurement.federal.award", async () => {
-    mockFetchOnce("sam-gov-opportunities.json", "application/json");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            opportunitiesData: [{ noticeId: "a2", title: "Y", type: "Award Notice", placeOfPerformance: { state: { name: "LA" } } }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
     const result = await samGovAdapter.run(fakeContext("sam-gov"));
     const award = result.records.find((r) =>
       (r.payload.type as string).toLowerCase().includes("award"),
@@ -41,7 +79,17 @@ describe("sam-gov adapter", () => {
   });
 
   it("externalId is noticeId", async () => {
-    mockFetchOnce("sam-gov-opportunities.json", "application/json");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            opportunitiesData: [{ noticeId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4", title: "Z", type: "Solicitation", placeOfPerformance: { state: { name: "LA" } } }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
     const result = await samGovAdapter.run(fakeContext("sam-gov"));
     expect(result.records[0].externalId).toBe("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4");
   });

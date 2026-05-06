@@ -16,25 +16,21 @@ describe("parcel-ebr adapter (ebr-gis)", () => {
     expect(r.confidence).toBeGreaterThan(0.5);
   });
 
-  it("uses ASMT field as parcel identifier (research-confirmed field name)", async () => {
+  it("uses ASSESSMENT_NUM field as parcel identifier", async () => {
     mockFetchOnce("ebr-parcels.json", "application/json");
     const result = await ebrParcelAdapter.run(fakeContext("ebr-gis"));
-    expect(result.records[0].externalId).toMatch(/^ebr:/);
+    expect(result.records[0].externalId).toBe("ebr:01-0055-0001");
     expect(result.records[0].payload.parcelNumber).toBe("01-0055-0001");
+    expect(result.records[0].payload.propertyNumber).toBe(10055);
   });
 
-  it("emits land.transfer when SALE_PRICE present", async () => {
+  it("emits land.parcel.update records (no sale price field on source layer)", async () => {
     mockFetchOnce("ebr-parcels.json", "application/json");
     const result = await ebrParcelAdapter.run(fakeContext("ebr-gis"));
-    const sale = result.records.find((r) => r.payload.salePriceUsd != null);
-    expect(sale!.predicate).toBe("land.transfer");
-  });
-
-  it("emits land.parcel.update when no SALE_PRICE", async () => {
-    mockFetchOnce("ebr-parcels.json", "application/json");
-    const result = await ebrParcelAdapter.run(fakeContext("ebr-gis"));
-    const update = result.records.find((r) => r.payload.salePriceUsd == null);
+    const update = result.records.find((r) => r.predicate === "land.parcel.update");
     expect(update!.predicate).toBe("land.parcel.update");
+    expect(update!.payload).not.toHaveProperty("salePriceUsd");
+    expect(update!.payload).not.toHaveProperty("saleDate");
   });
 
   it("has slug ebr-gis and implemented:true", () => {

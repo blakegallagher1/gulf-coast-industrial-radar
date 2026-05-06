@@ -3,24 +3,40 @@
   "geometryType": "esriGeometryPolygon",
   "spatialReference": { "wkid": 4326 },
   "fields": [
-    { "name": "PARCEL_ID", "type": "esriFieldTypeString" },
-    { "name": "OWNER", "type": "esriFieldTypeString" },
-    { "name": "ACRES", "type": "esriFieldTypeDouble" },
-    { "name": "ZONING", "type": "esriFieldTypeString" },
-    { "name": "LAST_UPD", "type": "esriFieldTypeDate" },
-    { "name": "SALE_DATE", "type": "esriFieldTypeDate" },
-    { "name": "SALE_PRICE", "type": "esriFieldTypeDouble" }
+    { "name": "PIN", "type": "esriFieldTypeString" },
+    { "name": "NAME", "type": "esriFieldTypeString" },
+    { "name": "ADDRESS1", "type": "esriFieldTypeString" },
+    { "name": "ADDRESS2", "type": "esriFieldTypeString" },
+    { "name": "ASSESSMENT", "type": "esriFieldTypeString" },
+    { "name": "PHYSICALAD", "type": "esriFieldTypeString" },
+    { "name": "WARD", "type": "esriFieldTypeString" },
+    { "name": "DATE_", "type": "esriFieldTypeString" },
+    { "name": "ZONE", "type": "esriFieldTypeString" },
+    { "name": "Zn_Descr", "type": "esriFieldTypeString" },
+    { "name": "link", "type": "esriFieldTypeString" },
+    { "name": "PRIOR_ZONI", "type": "esriFieldTypeString" },
+    { "name": "ZONE_DATE_", "type": "esriFieldTypeDate" },
+    { "name": "ORD_NO", "type": "esriFieldTypeString" },
+    { "name": "Shape__Area", "type": "esriFieldTypeDouble" }
   ],
   "features": [
     {
       "attributes": {
-        "PARCEL_ID": "C-0041-0012-0003",
-        "OWNER": "LAKE CHARLES LNG TERMINAL LLC",
-        "ACRES": 410.5,
-        "ZONING": "HEAVY INDUSTRIAL",
-        "LAST_UPD": 1743465600000,
-        "SALE_DATE": 1743465600000,
-        "SALE_PRICE": 7200000
+        "PIN": "C-0041-0012-0003",
+        "NAME": "LAKE CHARLES LNG TERMINAL LLC",
+        "ADDRESS1": "1000 TERMINAL RD",
+        "ADDRESS2": "LAKE CHARLES LA 70601",
+        "ASSESSMENT": "004100120003",
+        "PHYSICALAD": "1000 TERMINAL RD",
+        "WARD": "3",
+        "DATE_": "2025",
+        "ZONE": "HI",
+        "Zn_Descr": "Heavy Industrial",
+        "link": "https://example.com/calcasieu/C-0041-0012-0003",
+        "PRIOR_ZONI": "I-2",
+        "ZONE_DATE_": 1743465600000,
+        "ORD_NO": "2025-041",
+        "Shape__Area": 17881380
       },
       "geometry": {
         "rings": [[[-93.28, 30.17], [-93.27, 30.17], [-93.27, 30.16], [-93.28, 30.16], [-93.28, 30.17]]]
@@ -28,13 +44,21 @@
     },
     {
       "attributes": {
-        "PARCEL_ID": "C-0041-0012-0004",
-        "OWNER": "SABINE PASS LAND HOLDINGS LLC",
-        "ACRES": 218.0,
-        "ZONING": "HEAVY INDUSTRIAL",
-        "LAST_UPD": 1743552000000,
-        "SALE_DATE": null,
-        "SALE_PRICE": null
+        "PIN": "C-0041-0012-0004",
+        "NAME": "SABINE PASS LAND HOLDINGS LLC",
+        "ADDRESS1": "0 SHIP CHANNEL RD",
+        "ADDRESS2": "LAKE CHARLES LA 70601",
+        "ASSESSMENT": "004100120004",
+        "PHYSICALAD": "0 SHIP CHANNEL RD",
+        "WARD": "3",
+        "DATE_": "2025",
+        "ZONE": "HI",
+        "Zn_Descr": "Heavy Industrial",
+        "link": "https://example.com/calcasieu/C-0041-0012-0004",
+        "PRIOR_ZONI": "I-2",
+        "ZONE_DATE_": 1743552000000,
+        "ORD_NO": "2025-042",
+        "Shape__Area": 9496080
       },
       "geometry": {
         "rings": [[[-93.29, 30.17], [-93.28, 30.17], [-93.28, 30.16], [-93.29, 30.16], [-93.29, 30.17]]]
