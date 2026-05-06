@@ -503,11 +503,14 @@ async function upsertProject(c: ClusterCandidate) {
 
 async function ensureProjectSite(projectId: string, c: ClusterCandidate): Promise<void> {
   const existing = await prisma.site.findFirst({ where: { projectId }, select: { id: true } });
-  if (existing) return;
+  if (existing) {
+    await ensureParcelInterests(existing.id, c);
+    return;
+  }
   const totalAcres = c.input.acquisitions.reduce((sum, a) => sum + a.acres, 0);
   const centerLat = c.bbox ? (c.bbox.minLat + c.bbox.maxLat) / 2 : null;
   const centerLng = c.bbox ? (c.bbox.minLng + c.bbox.maxLng) / 2 : null;
-  await prisma.site.create({
+  const site = await prisma.site.create({
     data: {
       projectId,
       name: `Detected assembly site · ${c.parishCounty}`,
@@ -518,6 +521,82 @@ async function ensureProjectSite(projectId: string, c: ClusterCandidate): Promis
       infrastructureScore: Math.min(10, c.input.nearbyInfra.length * 2),
     },
   });
+  await ensureParcelInterests(site.id, c);
+}
+
+async function ensureParcelInterests(siteId: string, c: ClusterCandidate): Promise<void> {
+  for (const acquisition of c.input.acquisitions) {
+    const parcel = await prisma.parcel.upsert({
+      where: {
+        state_parishCounty_parcelNumber: {
+          state: c.state,
+          parishCounty: c.parishCounty,
+          parcelNumber: acquisition.parcelId,
+        },
+      },
+      create: {
+        state: c.state,
+        parishCounty: c.parishCounty,
+        parcelNumber: acquisition.parcelId,
+        acres: acquisition.acres,
+      },
+      update: {
+        acres: acquisition.acres,
+      },
+      select: { id: true },
+    });
+
+    const buyerEntityId = await resolveBuyerEntityId(acquisition.buyerEntityId, c.state);
+
+    const existing = await prisma.parcelInterest.findFirst({
+      where: {
+        siteId,
+        parcelId: parcel.id,
+        buyerEntityId: buyerEntityId ?? null,
+      },
+      select: { id: true },
+    });
+    if (existing) continue;
+
+    await prisma.parcelInterest.create({
+      data: {
+        siteId,
+        parcelId: parcel.id,
+        buyerEntityId,
+        acquiredAt: acquisition.acquiredAt,
+        pricePerAcre: acquisition.pricePerAcre ?? null,
+      },
+    });
+  }
+}
+
+async function resolveBuyerEntityId(value: string, state: string): Promise<string | null> {
+  const buyer = value.trim();
+  if (!buyer || buyer === "unknown") return null;
+
+  const byId = await prisma.entity.findUnique({
+    where: { id: buyer },
+    select: { id: true },
+  });
+  if (byId) return byId.id;
+
+  const byName = await prisma.entity.findFirst({
+    where: { name: buyer },
+    select: { id: true },
+  });
+  if (byName) return byName.id;
+
+  const created = await prisma.entity.create({
+    data: {
+      name: buyer,
+      kind: "LLC",
+      state,
+      opacityScore: 0.72,
+      notes: "Auto-created from QLAD land-control acquisition clustering.",
+    },
+    select: { id: true },
+  });
+  return created.id;
 }
 
 function corridorFor(parish: string): string {

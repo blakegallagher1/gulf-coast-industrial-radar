@@ -76,7 +76,7 @@ function makeSignals() {
       parishCounty: "Ascension",
       parcelId: p.parcelId,
       acres: p.acres,
-      buyerEntityId: entityIds[p.entityIdx],
+      buyerEntityId: entityIds[0],
       pricePerAcre: p.price / p.acres,
       geometry: {
         rings: [[
@@ -108,8 +108,30 @@ function buildDbMock(overrides: { publicCoverageFound?: boolean } = {}) {
       AFFILIATE_OF: "AFFILIATE_OF",
       ANALYST_LINKED: "ANALYST_LINKED",
     };
+    const ProjectStage = {
+      PUBLIC_ANNOUNCED: "PUBLIC_ANNOUNCED",
+      WATCH: "WATCH",
+      SITE_CONTROL: "SITE_CONTROL",
+      ENTITY_FORMED: "ENTITY_FORMED",
+      INCENTIVE_SURFACED: "INCENTIVE_SURFACED",
+      PERMIT_SURFACED: "PERMIT_SURFACED",
+      WETLANDS_WATERWAY_SURFACED: "WETLANDS_WATERWAY_SURFACED",
+      UTILITY_SURFACED: "UTILITY_SURFACED",
+      PORT_AGENDA_SURFACED: "PORT_AGENDA_SURFACED",
+      FINANCING_SURFACED: "FINANCING_SURFACED",
+      FID: "FID",
+      EPC: "EPC",
+      CONSTRUCTION: "CONSTRUCTION",
+    };
+    const Confidence = {
+      HIGH: "HIGH",
+      MEDIUM: "MEDIUM",
+      LOW: "LOW",
+    };
     return {
       EntityRelationship,
+      ProjectStage,
+      Confidence,
       prisma: {
         signal: {
           findMany: vi.fn(async () => signals),
@@ -177,7 +199,8 @@ describe("qlad-pipeline (Deliverable 3 smoke test)", () => {
   });
 
   it("Scenario 1: detector triggers, alert created, supplementaryEvidence contains publicCheck + entityResearch", async () => {
-    vi.mock("@gcir/db", () => {
+    vi.doMock("@gcir/db", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@gcir/db")>();
       const signals = makeSignals();
       const EntityRelationship = {
         SHARES_REGISTERED_AGENT: "SHARES_REGISTERED_AGENT",
@@ -185,8 +208,41 @@ describe("qlad-pipeline (Deliverable 3 smoke test)", () => {
         AFFILIATE_OF: "AFFILIATE_OF",
         ANALYST_LINKED: "ANALYST_LINKED",
       };
+      const ProjectStage = {
+        PUBLIC_ANNOUNCED: "PUBLIC_ANNOUNCED",
+        WATCH: "WATCH",
+        SITE_CONTROL: "SITE_CONTROL",
+        ENTITY_FORMED: "ENTITY_FORMED",
+        INCENTIVE_SURFACED: "INCENTIVE_SURFACED",
+        PERMIT_SURFACED: "PERMIT_SURFACED",
+        WETLANDS_WATERWAY_SURFACED: "WETLANDS_WATERWAY_SURFACED",
+        UTILITY_SURFACED: "UTILITY_SURFACED",
+        PORT_AGENDA_SURFACED: "PORT_AGENDA_SURFACED",
+        FINANCING_SURFACED: "FINANCING_SURFACED",
+        FID: "FID",
+        EPC: "EPC",
+        CONSTRUCTION: "CONSTRUCTION",
+      };
+      const Confidence = {
+        HIGH: "HIGH",
+        MEDIUM: "MEDIUM",
+        LOW: "LOW",
+      };
+      const SignalFamily = {
+        LAND_CONTROL: "LAND_CONTROL",
+      };
+      const ActionKind = {
+        RESEARCH_ENTITY: "RESEARCH_ENTITY",
+        VERIFY_SOURCE: "VERIFY_SOURCE",
+        PUBLIC_RECORDS_PULL: "PUBLIC_RECORDS_PULL",
+      };
       return {
+        ...actual,
         EntityRelationship,
+        ProjectStage,
+        Confidence,
+        SignalFamily,
+        ActionKind,
         prisma: {
           signal: { findMany: vi.fn(async () => signals) },
           entityLink: {
@@ -201,10 +257,27 @@ describe("qlad-pipeline (Deliverable 3 smoke test)", () => {
             findMany: vi.fn(async () =>
               ["e-1", "e-2", "e-3", "e-4", "e-5"].map((id) => ({ id, opacityScore: 0.82 })),
             ),
+            findUnique: vi.fn(async ({ where }: { where: { id?: string } }) =>
+              where.id ? { id: where.id } : null,
+            ),
+            create: vi.fn(async ({ data }: { data: { name: string } }) => ({ id: `entity-${data.name}` })),
           },
           project: {
             findFirst: vi.fn(async () => null),
             upsert: vi.fn(async () => ({ id: "prj-aurora-test", publicId: "PRJ-QLAD-test", score: 72 })),
+          },
+          site: {
+            findFirst: vi.fn(async () => null),
+            create: vi.fn(async () => ({ id: "site-aurora-test" })),
+          },
+          parcel: {
+            upsert: vi.fn(async ({ where }: { where: { state_parishCounty_parcelNumber: { parcelNumber: string } } }) => ({
+              id: `parcel-${where.state_parishCounty_parcelNumber.parcelNumber}`,
+            })),
+          },
+          parcelInterest: {
+            findFirst: vi.fn(async () => null),
+            create: vi.fn(async () => ({ id: "pi-test" })),
           },
           alert: {
             upsert: vi.fn(async (args: unknown) => {
@@ -214,14 +287,14 @@ describe("qlad-pipeline (Deliverable 3 smoke test)", () => {
             }),
           },
           recommendedAction: {
-            count: vi.fn(async () => 0),
+            count: vi.fn(async () => 1),
             createMany: vi.fn(async () => ({ count: 3 })),
           },
         },
       };
     });
 
-    vi.mock("../src/perplexity-client", () => {
+    vi.doMock("../src/perplexity-client", () => {
       const PerplexityDisabledError = class extends Error {};
       return {
         PerplexityDisabledError,
@@ -252,7 +325,7 @@ describe("qlad-pipeline (Deliverable 3 smoke test)", () => {
       };
     });
 
-    vi.mock("@gcir/agents", async (importOriginal) => {
+    vi.doMock("@gcir/agents", async (importOriginal) => {
       const actual = await importOriginal<typeof import("@gcir/agents")>();
       return {
         ...actual,
@@ -299,10 +372,11 @@ describe("qlad-pipeline (Deliverable 3 smoke test)", () => {
     });
   });
 
-  it("Scenario 2: validateAssembly returns publicCoverageFound=true → alert silenced", async () => {
+  it("Scenario 2: public coverage validation silences the alert", async () => {
     vi.resetModules();
 
-    vi.mock("@gcir/db", () => {
+    vi.doMock("@gcir/db", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@gcir/db")>();
       const signals = makeSignals();
       const EntityRelationship = {
         SHARES_REGISTERED_AGENT: "SHARES_REGISTERED_AGENT",
@@ -310,8 +384,41 @@ describe("qlad-pipeline (Deliverable 3 smoke test)", () => {
         AFFILIATE_OF: "AFFILIATE_OF",
         ANALYST_LINKED: "ANALYST_LINKED",
       };
+      const ProjectStage = {
+        PUBLIC_ANNOUNCED: "PUBLIC_ANNOUNCED",
+        WATCH: "WATCH",
+        SITE_CONTROL: "SITE_CONTROL",
+        ENTITY_FORMED: "ENTITY_FORMED",
+        INCENTIVE_SURFACED: "INCENTIVE_SURFACED",
+        PERMIT_SURFACED: "PERMIT_SURFACED",
+        WETLANDS_WATERWAY_SURFACED: "WETLANDS_WATERWAY_SURFACED",
+        UTILITY_SURFACED: "UTILITY_SURFACED",
+        PORT_AGENDA_SURFACED: "PORT_AGENDA_SURFACED",
+        FINANCING_SURFACED: "FINANCING_SURFACED",
+        FID: "FID",
+        EPC: "EPC",
+        CONSTRUCTION: "CONSTRUCTION",
+      };
+      const Confidence = {
+        HIGH: "HIGH",
+        MEDIUM: "MEDIUM",
+        LOW: "LOW",
+      };
+      const SignalFamily = {
+        LAND_CONTROL: "LAND_CONTROL",
+      };
+      const ActionKind = {
+        RESEARCH_ENTITY: "RESEARCH_ENTITY",
+        VERIFY_SOURCE: "VERIFY_SOURCE",
+        PUBLIC_RECORDS_PULL: "PUBLIC_RECORDS_PULL",
+      };
       return {
+        ...actual,
         EntityRelationship,
+        ProjectStage,
+        Confidence,
+        SignalFamily,
+        ActionKind,
         prisma: {
           signal: { findMany: vi.fn(async () => signals) },
           entityLink: {
@@ -326,10 +433,27 @@ describe("qlad-pipeline (Deliverable 3 smoke test)", () => {
             findMany: vi.fn(async () =>
               ["e-1", "e-2", "e-3", "e-4", "e-5"].map((id) => ({ id, opacityScore: 0.82 })),
             ),
+            findUnique: vi.fn(async ({ where }: { where: { id?: string } }) =>
+              where.id ? { id: where.id } : null,
+            ),
+            create: vi.fn(async ({ data }: { data: { name: string } }) => ({ id: `entity-${data.name}` })),
           },
           project: {
             findFirst: vi.fn(async () => null),
             upsert: vi.fn(async () => ({ id: "prj-aurora-test", publicId: "PRJ-QLAD-test", score: 72 })),
+          },
+          site: {
+            findFirst: vi.fn(async () => null),
+            create: vi.fn(async () => ({ id: "site-aurora-test" })),
+          },
+          parcel: {
+            upsert: vi.fn(async ({ where }: { where: { state_parishCounty_parcelNumber: { parcelNumber: string } } }) => ({
+              id: `parcel-${where.state_parishCounty_parcelNumber.parcelNumber}`,
+            })),
+          },
+          parcelInterest: {
+            findFirst: vi.fn(async () => null),
+            create: vi.fn(async () => ({ id: "pi-test" })),
           },
           alert: {
             upsert: vi.fn(async (args: unknown) => {
@@ -350,7 +474,43 @@ describe("qlad-pipeline (Deliverable 3 smoke test)", () => {
       };
     });
 
-    vi.mock("@gcir/agents", async (importOriginal) => {
+    vi.doMock("../src/perplexity-client", () => {
+      const PerplexityDisabledError = class extends Error {};
+      return {
+        PerplexityDisabledError,
+        structured: vi.fn(async ({ schemaName }: { schemaName: string }) => {
+          if (schemaName === "GcirPublicCoverageCheck") {
+            return {
+              data: {
+                ...CANNED_PUBLIC_CHECK,
+                publicCoverageFound: true,
+                summary: "Aurora Steel publicly announced $2.1B direct reduction steelmill in Donaldsonville, LA.",
+                confidence: 0.97,
+              },
+              citations: [{ url: "https://example.com/news", title: "Local paper" }],
+              costUsd: 0.012,
+              latencyMs: 320,
+              model: "openai/gpt-5.1",
+              inputTokens: 800,
+              outputTokens: 200,
+              cached: false,
+            };
+          }
+          return {
+            data: { ...CANNED_ENTITY_RESEARCH },
+            citations: [{ url: "https://sos.la.gov/entity/44009122", title: "LA SOS entity" }],
+            costUsd: 0.018,
+            latencyMs: 410,
+            model: "openai/gpt-5.1",
+            inputTokens: 600,
+            outputTokens: 250,
+            cached: false,
+          };
+        }),
+      };
+    });
+
+    vi.doMock("@gcir/agents", async (importOriginal) => {
       const actual = await importOriginal<typeof import("@gcir/agents")>();
       return {
         ...actual,
@@ -377,7 +537,6 @@ describe("qlad-pipeline (Deliverable 3 smoke test)", () => {
 
     expect(result.clustersTriggered).toBeGreaterThanOrEqual(1);
 
-    // Alert silenced, not created
     expect(result.alertsSilenced).toBe(1);
     expect(result.alertsCreated).toBe(0);
   });

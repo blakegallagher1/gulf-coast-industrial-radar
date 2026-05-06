@@ -29,8 +29,8 @@ import {
   recommendActions,
   writeWeeklyBrief,
 } from "@gcir/agents";
-import { tickQlad } from "./jobs/qlad-evaluate";
-import { tickBudgetReport } from "./jobs/budget-report";
+import { tickQlad } from "./jobs/qlad-evaluate.js";
+import { tickBudgetReport } from "./jobs/budget-report.js";
 
 const enabled = (process.env.WORKER_CRON_ENABLED ?? "false") === "true";
 
@@ -142,7 +142,9 @@ async function bootstrap() {
   new Cron("*/7 * * * *",  { protect: true }, tickExtraction);
   new Cron("*/30 * * * *", { protect: true }, tickEntityResolution);
   new Cron("*/15 * * * *", { protect: true }, tickScoring);
-  new Cron("*/20 * * * *", { protect: true }, tickQlad);
+  new Cron("*/20 * * * *", { protect: true }, async () => {
+    await tickQlad();
+  });
   new Cron("0 * * * *",    { protect: true }, tickActions);
   new Cron("0 6 * * 1",    { protect: true }, tickBrief);
   new Cron("0 */4 * * *",  { protect: true }, tickBudgetReport);
