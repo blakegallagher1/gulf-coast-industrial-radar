@@ -1,8 +1,15 @@
+import path from "node:path";
 import type { NextConfig } from "next";
+
+const workspaceRoot = path.resolve(process.cwd(), "../..");
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   typedRoutes: true,
+  turbopack: {
+    root: workspaceRoot,
+  },
+  outputFileTracingRoot: workspaceRoot,
   // Auth middleware lives at apps/web/middleware.ts (Next.js 16 convention).
   transpilePackages: [
     "@gcir/db",
