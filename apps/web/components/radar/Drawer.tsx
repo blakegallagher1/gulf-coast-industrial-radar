@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { BookmarkPlus, Clock3, FileText, MapPin, Route, Share2, Sparkles } from "lucide-react";
+import { BookmarkPlus, ChevronsLeftRight, Clock3, FileText, MapPin, Route, Share2, Sparkles } from "lucide-react";
 import { fmtAcres, fmtAge, fmtDate } from "@/lib/format";
 import { SummaryTab } from "./tabs/SummaryTab";
 import { TimelineTab } from "./tabs/TimelineTab";
@@ -30,10 +30,14 @@ export function Drawer({
   project,
   nowIso,
   plan: _plan = "pro",
+  collapsed,
+  onToggleCollapsed,
 }: {
   project: RadarProject | null;
   nowIso: string;
   plan?: "free" | "pro";
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }) {
   const [tab, setTab] = useState<TabId>("summary");
   const [watchPending, setWatchPending] = useState(false);
@@ -125,17 +129,54 @@ export function Drawer({
     );
   }
 
+  if (collapsed) {
+    return (
+      <aside className="hidden w-[76px] flex-shrink-0 flex-col border-l border-line bg-white lg:flex">
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          className="flex h-full min-h-0 flex-col items-center gap-3 px-2 py-3 text-center hover:bg-bg-2"
+          title="Expand project detail"
+        >
+          <ChevronsLeftRight className="h-4 w-4 text-muted" />
+          <div
+            className="font-mono text-[22px] font-semibold leading-none"
+            style={{ color: project.band === "high" ? "#b3261e" : project.band === "elevated" ? "#c97a16" : project.band === "watch" ? "#1f5fa8" : "#6b6b6b" }}
+          >
+            {project.score}
+          </div>
+          <div className="writing-mode-vertical max-h-[360px] rotate-180 truncate text-[12px] font-semibold text-ink [writing-mode:vertical-rl]">
+            {project.name}
+          </div>
+          <div className="mt-auto rounded-full border border-line px-1.5 py-2 font-mono text-[10px] text-muted [writing-mode:vertical-rl]">
+            detail
+          </div>
+        </button>
+      </aside>
+    );
+  }
+
   return (
     <aside className="flex w-[var(--drawer-w)] flex-shrink-0 flex-col overflow-hidden border-l border-line bg-white max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:z-40 max-md:h-[70vh] max-md:w-full max-md:rounded-t-xl max-md:border-l-0 max-md:border-t max-md:shadow-lg">
       <header className="border-b border-line-2 px-5 py-3.5">
-        <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
-          <span>
-            Project · {detail?.status ?? (project.score >= 95 ? "confirmed" : "suspected")}
-          </span>
-          <span className="text-stone-300">/</span>
-          <span>{headerSubject}</span>
-          <span className="text-stone-300">/</span>
-          <span className="font-mono">{project.publicId}</span>
+        <div className="mb-1.5 flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+            <span>
+              Project · {detail?.status ?? (project.score >= 95 ? "confirmed" : "suspected")}
+            </span>
+            <span className="text-stone-300">/</span>
+            <span>{headerSubject}</span>
+            <span className="text-stone-300">/</span>
+            <span className="font-mono">{project.publicId}</span>
+          </div>
+          <button
+            type="button"
+            className="gcir-icon-btn h-7 w-7 shrink-0"
+            onClick={onToggleCollapsed}
+            title="Collapse project detail"
+          >
+            <ChevronsLeftRight className="h-3.5 w-3.5" />
+          </button>
         </div>
         <h2 className="mb-2 text-[21px] font-semibold leading-tight tracking-tight text-ink">
           {project.name}

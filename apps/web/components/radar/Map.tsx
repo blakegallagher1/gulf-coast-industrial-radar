@@ -406,7 +406,7 @@ function FallbackMap({
     <div className="absolute inset-0 overflow-hidden bg-[#11100d]">
       <div className="absolute inset-0 opacity-80 [background-image:linear-gradient(rgba(255,255,255,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.06)_1px,transparent_1px)] [background-size:56px_56px]" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_35%_35%,rgba(201,122,22,.22),transparent_32%),radial-gradient(circle_at_62%_52%,rgba(16,163,127,.16),transparent_28%)]" />
-      <div className="absolute left-5 top-5 max-w-[360px] rounded-lg border border-white/15 bg-black/65 px-4 py-3 text-white shadow-xl backdrop-blur-md">
+      <div className="absolute left-5 top-[220px] max-w-[320px] rounded-lg border border-white/15 bg-black/65 px-4 py-3 text-white shadow-xl backdrop-blur-md max-lg:top-5">
         <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/50">
           Map renderer fallback
         </div>

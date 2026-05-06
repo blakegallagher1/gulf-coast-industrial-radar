@@ -62,6 +62,8 @@ export function RadarShell({
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const [commandSelection, setCommandSelection] = useState(0);
+  const [isAlertQueueCollapsed, setIsAlertQueueCollapsed] = useState(true);
+  const [isDrawerCollapsed, setIsDrawerCollapsed] = useState(true);
   const commandInputRef = useRef<HTMLInputElement>(null);
 
   const visibleProjects = useMemo<RadarProject[]>(
@@ -293,9 +295,9 @@ export function RadarShell({
         />
 
         <section className="relative min-w-0 flex-1 bg-bg-3">
-          <div className="pointer-events-none absolute left-4 top-4 z-10 w-[308px] max-lg:hidden">
-            <div className="overflow-hidden rounded-lg border border-white/15 bg-black/68 text-white shadow-2xl backdrop-blur-md">
-              <div className="flex items-start justify-between gap-3 border-b border-white/10 px-3 py-2.5">
+          <div className="pointer-events-none absolute left-4 top-4 z-10 w-[264px] max-lg:hidden">
+            <div className="overflow-hidden rounded-lg border border-white/15 bg-black/70 text-white shadow-2xl backdrop-blur-md">
+              <div className="flex items-center justify-between gap-3 border-b border-white/10 px-3 py-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-white/55">
                     <Activity className="h-3.5 w-3.5 text-emerald-300" />
@@ -314,15 +316,15 @@ export function RadarShell({
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 divide-x divide-y divide-white/10 text-[11.5px]">
+              <div className="grid grid-cols-4 divide-x divide-white/10 text-[11px]">
                 <WorkspaceStat
                   icon={<Crosshair className="h-3.5 w-3.5" />}
-                  label="in view"
+                  label="view"
                   value={String(visibleProjects.length)}
                 />
                 <WorkspaceStat
                   icon={<Factory className="h-3.5 w-3.5" />}
-                  label="high intent"
+                  label="intent"
                   value={String(workspaceMetrics.highIntent)}
                 />
                 <WorkspaceStat
@@ -335,7 +337,7 @@ export function RadarShell({
                   value={`${health.ok}/${health.total}`}
                 />
               </div>
-              <div className="space-y-1 border-t border-white/10 px-3 py-2 text-[11.5px] text-white/62">
+              <div className="space-y-1 border-t border-white/10 px-3 py-2 text-[11px] text-white/62">
                 <div className="truncate">
                   Focus corridor:{" "}
                   <strong className="font-semibold text-white">
@@ -357,10 +359,18 @@ export function RadarShell({
             activeId={active?.id ?? null}
             nowIso={nowIso}
             onSelect={onSelect}
+            collapsed={isAlertQueueCollapsed}
+            onToggleCollapsed={() => setIsAlertQueueCollapsed((collapsed) => !collapsed)}
           />
         </section>
 
-        <Drawer project={active} nowIso={nowIso} plan={plan} />
+        <Drawer
+          project={active}
+          nowIso={nowIso}
+          plan={plan}
+          collapsed={isDrawerCollapsed}
+          onToggleCollapsed={() => setIsDrawerCollapsed((collapsed) => !collapsed)}
+        />
       </div>
 
       <StatusBar health={health} count={visibleProjects.length} />
@@ -380,10 +390,10 @@ function WorkspaceStat({
   value: string;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 px-4 py-3">
+    <div className="flex min-w-0 flex-col items-center justify-center gap-1 px-2.5 py-2.5 text-center">
       {icon && <span className="text-white/45">{icon}</span>}
       <div className="min-w-0">
-        <div className="font-mono text-[15px] font-semibold leading-none text-white">{value}</div>
+        <div className="font-mono text-[13px] font-semibold leading-none text-white">{value}</div>
         <div className="mt-1 truncate text-[10px] uppercase tracking-[0.08em] text-white/42">{label}</div>
       </div>
     </div>

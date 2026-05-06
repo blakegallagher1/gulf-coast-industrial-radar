@@ -1,6 +1,6 @@
 "use client";
 
-import { Filter, MapPin, RadioTower } from "lucide-react";
+import { ChevronDown, ChevronUp, Filter, MapPin, RadioTower } from "lucide-react";
 import { ScoreChip } from "@/components/score-chip";
 import { StageTag } from "@/components/stage-tag";
 import { fmtAcres, fmtAge } from "@/lib/format";
@@ -12,15 +12,43 @@ export function AlertsOverlay({
   activeId,
   nowIso,
   onSelect,
+  collapsed,
+  onToggleCollapsed,
 }: {
   projects: RadarProject[];
   activeId: string | null;
   nowIso: string;
   onSelect: (id: string) => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }) {
   const topScore = projects[0]?.score ?? 0;
   const totalAcres = projects.reduce((sum, project) => sum + (project.acres ?? 0), 0);
   const watchedCount = projects.filter((project) => project.band === "watch").length;
+
+  if (collapsed) {
+    return (
+      <aside className="absolute right-3.5 top-3.5 z-10 w-[248px] overflow-hidden rounded-lg border border-line bg-white shadow-xl">
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-bg-2"
+          title="Expand alert queue"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <RadioTower className="h-3.5 w-3.5 shrink-0 text-crit" />
+            <span className="min-w-0">
+              <span className="block truncate text-[13px] font-semibold text-ink">Alert queue</span>
+              <span className="block font-mono text-[10.5px] text-muted">
+                {projects.length} in view · top {topScore || "--"}
+              </span>
+            </span>
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted" />
+        </button>
+      </aside>
+    );
+  }
 
   return (
     <aside
@@ -41,9 +69,19 @@ export function AlertsOverlay({
               last refresh · just now · auto
             </div>
           </div>
-          <button className="gcir-icon-btn h-7 w-7" title="Filter">
-            <Filter className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button className="gcir-icon-btn h-7 w-7" title="Filter">
+              <Filter className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              className="gcir-icon-btn h-7 w-7"
+              onClick={onToggleCollapsed}
+              title="Collapse alert queue"
+            >
+              <ChevronUp className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
         <div className="mt-3 grid grid-cols-3 overflow-hidden rounded-md border border-line bg-bg-2 text-[11px]">
           <QueueMetric label="top score" value={topScore ? String(topScore) : "--"} />
