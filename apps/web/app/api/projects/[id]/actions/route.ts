@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@gcir/db";
+import { requireUser } from "../../../_lib/require-user";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -23,6 +24,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const gate = await requireUser();
+  if (!gate.ok) return gate.response;
+
   const { id } = await params;
   const { recommendActions } = await import("@gcir/agents");
   const out = await recommendActions(id);

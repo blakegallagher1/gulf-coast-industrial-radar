@@ -7,8 +7,9 @@ import { tickQlad } from "../../../../../worker/src/jobs/qlad-evaluate";
  */
 export async function POST(req: Request) {
   const auth = req.headers.get("authorization") ?? "";
-  const expected = `Bearer ${process.env.HEALTHCHECK_TOKEN}`;
-  if (process.env.HEALTHCHECK_TOKEN && auth !== expected) {
+  const token = process.env.CRON_SECRET ?? process.env.HEALTHCHECK_TOKEN;
+  const expected = token ? `Bearer ${token}` : null;
+  if (expected && auth !== expected) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

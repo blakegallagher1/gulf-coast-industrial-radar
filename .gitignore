@@ -41,6 +41,7 @@ packages/db/src/generated/
 
 # evidence cache (local dev only)
 .evidence-cache/
+.playwright-mcp/
 
 # python venvs (legacy or scripts)
 .venv/

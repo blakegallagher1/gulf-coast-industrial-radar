@@ -3,12 +3,12 @@ import { NextResponse } from "next/server";
 
 function authBypassed() {
   const authDisabled = process.env.NEXT_PUBLIC_DISABLE_AUTH === "true";
+  const hasClerkKey = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
   const allowDevBypass =
     authDisabled &&
     (process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_E2E === "true");
-  const hasClerkKey = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
-  return authDisabled || allowDevBypass || !hasClerkKey;
+  return allowDevBypass || !hasClerkKey;
 }
 
 export async function requireUser() {

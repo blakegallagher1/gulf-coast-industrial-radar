@@ -2,11 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  experimental: {
-    typedRoutes: true,
-  },
-  // The middleware lives at apps/web/proxy.ts (Roux convention) — Next.js
-  // auto-detects it because of the explicit middleware export.
+  typedRoutes: true,
+  // Auth middleware lives at apps/web/middleware.ts (Next.js 16 convention).
   transpilePackages: [
     "@gcir/db",
     "@gcir/adapters",

@@ -30,7 +30,6 @@ const isPublic = createRouteMatcher([
 const allowDevBypass =
   process.env.NEXT_PUBLIC_DISABLE_AUTH === "true" &&
   (process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_E2E === "true");
-const authDisabled = process.env.NEXT_PUBLIC_DISABLE_AUTH === "true";
 const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 function publicOnlyMiddleware(req: NextRequest) {
@@ -39,7 +38,7 @@ function publicOnlyMiddleware(req: NextRequest) {
 }
 
 const middleware =
-  authDisabled || allowDevBypass || !clerkPublishableKey
+  allowDevBypass || !clerkPublishableKey
     ? publicOnlyMiddleware
     : clerkMiddleware(async (auth, req) => {
   if (isPublic(req)) return NextResponse.next();
