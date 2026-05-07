@@ -1,19 +1,56 @@
 import { prisma } from "@gcir/db";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowUpRight, ChevronLeft, FileText, TrendingUp } from "lucide-react";
+import { ArrowUpRight, ChevronLeft, FileText, Mail, TrendingUp } from "lucide-react";
 import { fmtDate } from "@/lib/format";
+import { PublishControls } from "./publish-controls";
 
 export const dynamic = "force-dynamic";
 
+type SourceHealthItem = { name: string; status: string; lastError?: string | null };
+type FollowedWatchlist = { id?: string; name: string };
+type WatchlistFocusProject = {
+  projectPublicId: string;
+  projectName: string;
+  score?: number;
+  watchlistNames?: string[];
+};
+type FollowedWatchlistDelivery = {
+  recipientCount?: number;
+  queuedRecipients?: number;
+  publishedAt?: string;
+  watchlistCount?: number;
+};
+type BriefSourceHealth = {
+  items: SourceHealthItem[];
+  followedWatchlists: FollowedWatchlist[];
+  watchlistFocus: WatchlistFocusProject[];
+  followedWatchlistDelivery?: FollowedWatchlistDelivery;
+};
+
 export default async function BriefView({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const brief = await prisma.brief.findUnique({ where: { id } });
+  const brief = await prisma.brief.findUnique({
+    where: { id },
+    include: {
+      recipients: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
   if (!brief) notFound();
 
   const movers = (brief.topMovers as Array<{ publicId?: string; name?: string; scoreDelta?: number }>) ?? [];
   const actions = (brief.recommendedActions as Array<{ rank: number; title: string; why?: string }>) ?? [];
-  const health = (brief.sourceHealth as { items?: Array<{ name: string; status: string; lastError?: string | null }> }) ?? { items: [] };
+  const health = readSourceHealth(brief.sourceHealth);
+  const currentFollowedRecipientCount = await loadCurrentFollowedRecipientCount();
+  const followedDeliveryRecipientCount =
+    health.followedWatchlistDelivery?.recipientCount ?? currentFollowedRecipientCount;
+  const followedDeliveryLabel = health.followedWatchlistDelivery?.publishedAt
+    ? "included recipients"
+    : "eligible recipients";
 
   return (
     <main className="mx-auto max-w-[960px] flex-1 overflow-y-auto px-10 py-12">
@@ -52,6 +89,16 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
 
         <div className="gcir-horizon mt-7" />
       </header>
+
+      <PublishControls
+        briefId={brief.id}
+        initialPublished={Boolean(brief.publishedAt)}
+        followedWatchlistCount={health.followedWatchlists.length}
+        watchlistFocusCount={health.watchlistFocus.length}
+        followedDeliveryRecipientCount={followedDeliveryRecipientCount}
+        followedDeliveryLabel={followedDeliveryLabel}
+        queuedRecipientCount={brief.recipients.length}
+      />
 
       <Section
         sectionCode="§01"
@@ -93,6 +140,83 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
 
       <Section
         sectionCode="§02"
+        title="Followed watchlist attribution"
+        meta={`${health.followedWatchlists.length} watchlists · ${health.watchlistFocus.length} projects`}
+        icon={<Mail className="h-3.5 w-3.5" />}
+      >
+        {health.followedWatchlists.length === 0 && health.watchlistFocus.length === 0 ? (
+          <Empty />
+        ) : (
+          <div className="overflow-hidden rounded-[7px] border border-line bg-bone">
+            <div className="grid grid-cols-3 gap-px bg-line/60">
+              <AttributionCell value={String(health.followedWatchlists.length)} label="contributing watchlists" />
+              <AttributionCell value={String(health.watchlistFocus.length)} label="followed projects" />
+              <AttributionCell value={String(followedDeliveryRecipientCount)} label={followedDeliveryLabel} />
+            </div>
+
+            <div className="grid gap-px bg-line/60 lg:grid-cols-[0.85fr_1.15fr]">
+              <div className="bg-bone px-5 py-4">
+                <div className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.16em] text-accent-ink">
+                  Followed watchlists
+                </div>
+                <ul className="mt-3 space-y-2">
+                  {health.followedWatchlists.map((watchlist) => (
+                    <li key={watchlist.id ?? watchlist.name} className="rounded-[5px] border border-line bg-bone-2/50 px-3 py-2.5">
+                      <div className="font-sans text-[13.5px] font-semibold tracking-tight text-ink">{watchlist.name}</div>
+                      <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+                        weekly brief follow state
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="bg-bone px-5 py-4">
+                <div className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.16em] text-accent-ink">
+                  Projects pulled by follow state
+                </div>
+                {health.watchlistFocus.length === 0 ? (
+                  <div className="mt-3 rounded-[5px] border border-dashed border-line bg-bone-2/40 px-3 py-4 text-[12.5px] text-muted">
+                    No scored projects crossed the followed-watchlist threshold for this issue.
+                  </div>
+                ) : (
+                  <ul className="mt-3 divide-y divide-line rounded-[5px] border border-line bg-bone-2/40">
+                    {health.watchlistFocus.map((project) => (
+                      <li key={project.projectPublicId} className="px-3.5 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-display text-[18px] leading-tight tracking-tight text-ink">
+                              {project.projectName}
+                            </div>
+                            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+                              {project.projectPublicId}
+                            </div>
+                          </div>
+                          {project.score != null && (
+                            <span className="rounded-[3px] border border-info/30 bg-info/10 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-info">
+                              score {project.score}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {(project.watchlistNames ?? []).map((name) => (
+                            <span key={name} className="rounded-[3px] border border-line bg-bone px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.10em] text-muted">
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </Section>
+
+      <Section
+        sectionCode="§03"
         title="What changed this week"
         meta="analyst narrative"
       >
@@ -106,7 +230,7 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
       </Section>
 
       <Section
-        sectionCode="§03"
+        sectionCode="§04"
         title="Recommended actions"
         meta={`${actions.length} actions`}
       >
@@ -136,7 +260,7 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
       </Section>
 
       <Section
-        sectionCode="§04"
+        sectionCode="§05"
         title="Source health"
         meta={`${health.items?.length ?? 0} sources`}
       >
@@ -181,6 +305,54 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
   );
 }
 
+function readSourceHealth(value: unknown): BriefSourceHealth {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { items: [], followedWatchlists: [], watchlistFocus: [] };
+  }
+
+  const record = value as {
+    items?: SourceHealthItem[];
+    followedWatchlists?: FollowedWatchlist[];
+    watchlistFocus?: WatchlistFocusProject[];
+    followedWatchlistDelivery?: FollowedWatchlistDelivery;
+  };
+
+  return {
+    items: Array.isArray(record.items) ? record.items : [],
+    followedWatchlists: Array.isArray(record.followedWatchlists) ? record.followedWatchlists : [],
+    watchlistFocus: Array.isArray(record.watchlistFocus) ? record.watchlistFocus : [],
+    followedWatchlistDelivery:
+      record.followedWatchlistDelivery && typeof record.followedWatchlistDelivery === "object"
+        ? record.followedWatchlistDelivery
+        : undefined,
+  };
+}
+
+async function loadCurrentFollowedRecipientCount(): Promise<number> {
+  const watchlists = await prisma.watchlist.findMany({
+    where: {
+      AND: [
+        { filter: { path: ["followed"], equals: true } },
+        { filter: { path: ["deliveryMode"], equals: "weekly_brief" } },
+      ],
+      userId: { not: null },
+    },
+    select: {
+      user: {
+        select: {
+          email: true,
+        },
+      },
+    },
+  });
+
+  return new Set(
+    watchlists
+      .map((watchlist) => watchlist.user?.email?.trim().toLowerCase())
+      .filter((email): email is string => Boolean(email && email.includes("@"))),
+  ).size;
+}
+
 function Section({
   sectionCode,
   title,
@@ -206,6 +378,15 @@ function Section({
       </header>
       {children}
     </section>
+  );
+}
+
+function AttributionCell({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="bg-bone px-4 py-4">
+      <div className="font-display text-[32px] leading-none tracking-tight text-ink">{value}</div>
+      <div className="mt-1.5 font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted">{label}</div>
+    </div>
   );
 }
 

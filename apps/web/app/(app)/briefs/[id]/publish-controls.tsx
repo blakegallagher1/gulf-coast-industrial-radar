@@ -5,9 +5,19 @@ import { useState, useTransition } from "react";
 export function PublishControls({
   briefId,
   initialPublished,
+  followedWatchlistCount,
+  watchlistFocusCount,
+  followedDeliveryRecipientCount,
+  followedDeliveryLabel,
+  queuedRecipientCount,
 }: {
   briefId: string;
   initialPublished: boolean;
+  followedWatchlistCount: number;
+  watchlistFocusCount: number;
+  followedDeliveryRecipientCount: number;
+  followedDeliveryLabel: string;
+  queuedRecipientCount: number;
 }) {
   const [emails, setEmails] = useState("");
   const [published, setPublished] = useState(initialPublished);
@@ -50,6 +60,7 @@ export function PublishControls({
           targetId: briefId,
           metadata: {
             queuedRecipients: body.queuedRecipients ?? 0,
+            followedWatchlistRecipients: body.followedWatchlistRecipients ?? 0,
           },
         }),
         keepalive: true,
@@ -82,9 +93,15 @@ export function PublishControls({
       </div>
 
       <div className="px-5 py-4">
+        <div className="mb-4 grid grid-cols-2 gap-px overflow-hidden rounded-[5px] border border-line bg-line/60 sm:grid-cols-4">
+          <PublishStat value={String(followedWatchlistCount)} label="followed watchlists" />
+          <PublishStat value={String(watchlistFocusCount)} label="followed projects" />
+          <PublishStat value={String(followedDeliveryRecipientCount)} label={followedDeliveryLabel} />
+          <PublishStat value={String(queuedRecipientCount)} label="queued recipients" />
+        </div>
         <div className="text-[13px] leading-[1.6] text-muted">
-          Queue this issue for manual delivery to a team distribution list. This does not send email by itself —
-          it marks the issue published and stores intended recipients.
+          Publish this issue to followed-watchlist recipients plus any manual emails below. Delivery attempts are
+          written back to BriefRecipient for audit.
         </div>
         <textarea
           value={emails}
@@ -107,5 +124,14 @@ export function PublishControls({
         )}
       </div>
     </section>
+  );
+}
+
+function PublishStat({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="bg-bone px-3.5 py-3">
+      <div className="font-display text-[26px] leading-none tracking-tight text-ink">{value}</div>
+      <div className="mt-1 font-mono text-[9px] uppercase tracking-[0.13em] text-muted">{label}</div>
+    </div>
   );
 }

@@ -8,6 +8,17 @@ type PublishBody = {
   emails?: string[];
 };
 
+type BriefSourceHealthRecord = {
+  followedWatchlistDelivery?: {
+    recipientCount?: number;
+    queuedRecipients?: number;
+    publishedAt?: string;
+    watchlistCount?: number;
+  };
+  [key: string]: unknown;
+};
+type BriefEmailMover = { name?: string; scoreDelta?: number; delta?: number };
+
 function normalizeEmails(values: string[] | undefined): string[] {
   if (!Array.isArray(values)) return [];
   return Array.from(
@@ -46,6 +57,17 @@ async function loadFollowedWatchlistEmails(): Promise<string[]> {
   );
 }
 
+function readSourceHealthRecord(value: unknown): BriefSourceHealthRecord {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as BriefSourceHealthRecord;
+}
+
+function isBriefEmailMover(value: unknown): value is BriefEmailMover {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -61,7 +83,7 @@ export async function POST(
 
   const brief = await prisma.brief.findUnique({
     where: { id },
-    select: { id: true, publishedAt: true },
+    select: { id: true, publishedAt: true, sourceHealth: true },
   });
 
   if (!brief) {
@@ -78,14 +100,29 @@ export async function POST(
   const existingEmailSet = new Set(
     existingRecipients
       .map((recipient) => recipient.email)
-      .filter((value): value is string => Boolean(value)),
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.trim().toLowerCase()),
   );
   const newEmails = emails.filter((email) => !existingEmailSet.has(email));
+
+  const sourceHealth = readSourceHealthRecord(brief.sourceHealth);
+  const followedWatchlists = Array.isArray(sourceHealth.followedWatchlists)
+    ? sourceHealth.followedWatchlists
+    : [];
+  const nextSourceHealth: BriefSourceHealthRecord = {
+    ...sourceHealth,
+    followedWatchlistDelivery: {
+      recipientCount: followerEmails.length,
+      queuedRecipients: newEmails.length,
+      publishedAt: publishedAt.toISOString(),
+      watchlistCount: followedWatchlists.length,
+    },
+  };
 
   await prisma.$transaction([
     prisma.brief.update({
       where: { id },
-      data: { publishedAt },
+      data: { publishedAt, sourceHealth: nextSourceHealth as never },
     }),
     ...newEmails.map((email) =>
       prisma.briefRecipient.create({
@@ -106,7 +143,9 @@ export async function POST(
 
     if (fullBrief) {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://gulf-coast-industrial-radar.vercel.app";
-      const movers = (fullBrief.topMovers as any[]) ?? [];
+      const movers = Array.isArray(fullBrief.topMovers)
+        ? fullBrief.topMovers.filter(isBriefEmailMover)
+        : [];
       const { subject, html } = renderBriefEmail({
         briefId: id,
         title: fullBrief.title,
