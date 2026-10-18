@@ -137,7 +137,7 @@ export default async function AdminRunsPage() {
         <Stat
           label="24h error rate"
           value={`${(errorRate * 100).toFixed(1)}%`}
-          tone={errorRate > 0.05 ? "warn" : errorRate > 0.15 ? "danger" : "ok"}
+          tone={errorRate >= 0.15 ? "danger" : errorRate >= 0.05 ? "warn" : "ok"}
         />
       </div>
 

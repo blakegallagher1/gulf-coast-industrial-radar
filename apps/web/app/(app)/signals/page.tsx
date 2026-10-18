@@ -3,7 +3,10 @@ import {
   SIGNAL_FAMILY_LABELS,
   SIGNAL_WEIGHTS,
 } from "@gcir/shared";
+import { prisma } from "@gcir/db";
 import { PageHeader } from "@/components/page-header";
+
+export const dynamic = "force-dynamic";
 
 const FAMILY_COLOR: Record<string, string> = {
   LAND_CONTROL:        "#2f7575",
@@ -61,7 +64,38 @@ const DESC: Record<string, { what: string; watches: string }> = {
   },
 };
 
-export default function SignalsReference() {
+export default async function SignalsReference({
+  searchParams,
+}: {
+  searchParams?: Promise<{ family?: string }>;
+}) {
+  const params = searchParams ? await searchParams : undefined;
+  const selectedFamily =
+    params?.family && SIGNAL_FAMILIES.includes(params.family as (typeof SIGNAL_FAMILIES)[number])
+      ? (params.family as (typeof SIGNAL_FAMILIES)[number])
+      : null;
+  const [recentSignals, familyCounts] = await Promise.all([
+    prisma.signal.findMany({
+      where: selectedFamily ? { family: selectedFamily } : undefined,
+      orderBy: { observedAt: "desc" },
+      take: 25,
+      select: {
+        id: true,
+        predicate: true,
+        subjectLabel: true,
+        observedAt: true,
+        confidence: true,
+        source: { select: { name: true, slug: true } },
+      },
+    }),
+    prisma.signal.groupBy({
+      by: ["family"],
+      _count: { _all: true },
+      orderBy: { family: "asc" },
+    }),
+  ]);
+  const totalSignals = familyCounts.reduce((sum, row) => sum + row._count._all, 0);
+  const countByFamily = new Map(familyCounts.map((row) => [row.family, row._count._all]));
   const totalWeight = SIGNAL_FAMILIES.reduce((sum, fam) => sum + SIGNAL_WEIGHTS[fam], 0);
 
   return (
@@ -74,6 +108,85 @@ export default function SignalsReference() {
         description="The radar's project-formation score is a weighted composite across all signal families that fire. Every weight is honest. Every contributor inspectable. No proprietary aggregators."
         meta={`Σ weights = ${totalWeight}`}
       />
+
+      {selectedFamily && (
+        <section className="mb-6 rounded-[6px] border border-line bg-bone-2/50 px-4 py-3 text-[13px] text-muted">
+          Showing live signals filtered to <span className="font-semibold text-ink">{SIGNAL_FAMILY_LABELS[selectedFamily]}</span>.{" "}
+          <a href="/signals" className="underline decoration-line decoration-1 underline-offset-2 hover:text-ink">
+            Clear filter
+          </a>
+        </section>
+      )}
+
+      <section className="mb-8 rounded-[7px] border border-line bg-bone p-5 shadow-sm">
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent-ink">Live intake</div>
+            <h2 className="mt-1 font-display text-[25px] leading-tight tracking-tight text-ink">Recent source signals</h2>
+            <p className="mt-1 text-[13px] text-muted">
+              Production records before project clustering and analyst review.
+            </p>
+          </div>
+          <div className="rounded-[5px] border border-line bg-bone-2 px-3 py-2 text-right">
+            <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted">Total</div>
+            <div className="font-display text-[24px] leading-none text-ink">{totalSignals.toLocaleString()}</div>
+          </div>
+        </div>
+
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {SIGNAL_FAMILIES.map((fam) => (
+            <a
+              key={fam}
+              href={`/signals?family=${encodeURIComponent(fam)}`}
+              className="rounded-[5px] border border-line bg-bone-2/50 px-3 py-2 transition-colors hover:border-ink/30"
+            >
+              <div className="mb-1 flex items-center gap-2 font-mono text-[9.5px] uppercase tracking-[0.08em] text-muted">
+                <span className="h-2 w-2 rounded-sm" style={{ background: FAMILY_COLOR[fam] ?? "#6b6b6b" }} />
+                <span className="truncate">{SIGNAL_FAMILY_LABELS[fam]}</span>
+              </div>
+              <div className="font-display text-[19px] leading-none text-ink">
+                {(countByFamily.get(fam) ?? 0).toLocaleString()}
+              </div>
+            </a>
+          ))}
+        </div>
+
+        <div className="overflow-hidden rounded-[6px] border border-line">
+          <table className="w-full border-collapse text-left text-[12px]">
+            <thead className="bg-bone-2 font-mono text-[9.5px] uppercase tracking-[0.12em] text-muted">
+              <tr>
+                <th className="px-3 py-2 font-semibold">Observed</th>
+                <th className="px-3 py-2 font-semibold">Source</th>
+                <th className="px-3 py-2 font-semibold">Predicate</th>
+                <th className="px-3 py-2 font-semibold">Subject</th>
+                <th className="px-3 py-2 text-right font-semibold">Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentSignals.map((signal) => (
+                <tr key={signal.id} className="border-t border-line/60">
+                  <td className="whitespace-nowrap px-3 py-2 font-mono text-muted">
+                    {signal.observedAt.toISOString().slice(0, 10)}
+                  </td>
+                  <td className="px-3 py-2 text-ink-2">{signal.source?.name ?? signal.source?.slug ?? "Source"}</td>
+                  <td className="px-3 py-2 font-mono text-[11px] text-ink-3">{signal.predicate}</td>
+                  <td className="max-w-[420px] truncate px-3 py-2 text-ink">{signal.subjectLabel}</td>
+                  <td className="px-3 py-2 text-right font-mono text-muted">
+                    {Math.round(signal.confidence * 100)}%
+                  </td>
+                </tr>
+              ))}
+              {recentSignals.length === 0 && (
+                <tr>
+                  <td className="px-3 py-5 text-center text-muted" colSpan={5}>
+                    No production signals have been ingested yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
         {SIGNAL_FAMILIES.map((fam, idx) => {

@@ -9,10 +9,15 @@
 import OpenAI from "openai";
 import { z, type ZodSchema, type ZodTypeDef } from "zod";
 
-let _client: OpenAI | undefined;
-function getClient() {
-  if (!_client) _client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  return _client;
+let client: OpenAI | undefined;
+
+function getClient(): OpenAI {
+  if (!client) {
+    client = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return client;
 }
 
 export const MODEL = process.env.AGENT_MODEL_ID ?? "gpt-5.4";

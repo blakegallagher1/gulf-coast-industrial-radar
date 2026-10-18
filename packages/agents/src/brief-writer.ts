@@ -144,6 +144,12 @@ export async function writeWeeklyBrief(window?: { start: Date; end: Date }): Pro
     perplexity: { preset: "deep" },
   });
 
+  const projectIdByPublicId = new Map(top.map((project) => [project.publicId, project.id]));
+  const enrichedTopMovers = out.data.topMovers.map((mover) => ({
+    ...mover,
+    projectId: projectIdByPublicId.get(mover.publicId) ?? null,
+  }));
+
   const last = await prisma.brief.findFirst({ orderBy: { issueNumber: "desc" } });
   const issueNumber = (last?.issueNumber ?? 0) + 1;
 
@@ -154,7 +160,7 @@ export async function writeWeeklyBrief(window?: { start: Date; end: Date }): Pro
       windowStart: start,
       windowEnd: end,
       narrative: out.data.narrative,
-      topMovers: out.data.topMovers as never,
+      topMovers: enrichedTopMovers as never,
       recommendedActions: out.data.recommendedActions as never,
       sourceHealth: {
         items: sources.map((s) => ({ name: s.name, status: s.status, lastError: s.lastError })),

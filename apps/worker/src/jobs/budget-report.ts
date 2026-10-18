@@ -21,7 +21,9 @@
  * sends one email per UTC day. No DB writes.
  */
 
-import { prisma } from "@gcir/db";
+import * as db from "@gcir/db";
+
+const prisma = db.prisma;
 
 const DAILY_CAP = Number(process.env.PERPLEXITY_DAILY_BUDGET_USD ?? "50");
 const ALERT_THRESHOLD = Number(process.env.BUDGET_ALERT_THRESHOLD ?? "0.75");

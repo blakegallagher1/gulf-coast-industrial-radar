@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowUpRight, ChevronLeft, FileText, Mail, TrendingUp } from "lucide-react";
 import { fmtDate } from "@/lib/format";
+import { ShareLinkButton } from "@/components/share-link-button";
+import { UsageEventTracker } from "@/components/usage-event-tracker";
 import { PublishControls } from "./publish-controls";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +29,37 @@ type BriefSourceHealth = {
   watchlistFocus: WatchlistFocusProject[];
   followedWatchlistDelivery?: FollowedWatchlistDelivery;
 };
+type BriefAction = { rank: number; title: string; why?: string };
+type BriefAudience = "Investor" | "Developer" | "Engineering" | "Construction";
+
+const BRIEF_AUDIENCES: BriefAudience[] = ["Investor", "Developer", "Engineering", "Construction"];
+
+function inferAudiences(action: BriefAction): BriefAudience[] {
+  const text = `${action.title} ${action.why ?? ""}`.toLowerCase();
+  const audiences = new Set<BriefAudience>();
+
+  if (/(owner|option|assemblage|parcel|value|comp|outreach|pricing|control)/.test(text)) {
+    audiences.add("Investor");
+    audiences.add("Developer");
+  }
+  if (/(zoning|entitlement|wetland|flood|drainage|constraint|site|compatibility)/.test(text)) {
+    audiences.add("Developer");
+    audiences.add("Engineering");
+  }
+  if (/(board|schedule|construction|epc|contract|procurement)/.test(text)) {
+    audiences.add("Construction");
+    audiences.add("Engineering");
+  }
+  if (/(review|sponsor|use-case|circulated|evidence)/.test(text)) {
+    BRIEF_AUDIENCES.forEach((audience) => audiences.add(audience));
+  }
+  if (audiences.size === 0) {
+    audiences.add("Investor");
+    audiences.add("Developer");
+  }
+
+  return Array.from(audiences);
+}
 
 export default async function BriefView({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -34,16 +67,28 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
     where: { id },
     include: {
       recipients: {
+        orderBy: [{ sentAt: "desc" }, { email: "asc" }],
         select: {
           id: true,
+          email: true,
+          sentAt: true,
+          openedAt: true,
+          clickedAt: true,
         },
       },
     },
   });
   if (!brief) notFound();
 
-  const movers = (brief.topMovers as Array<{ publicId?: string; name?: string; scoreDelta?: number }>) ?? [];
-  const actions = (brief.recommendedActions as Array<{ rank: number; title: string; why?: string }>) ?? [];
+  const movers = (brief.topMovers as Array<{
+    projectId?: string | null;
+    publicId?: string;
+    name?: string;
+    scoreDelta?: number;
+    delta?: number;
+    headline?: string;
+  }>) ?? [];
+  const actions = (brief.recommendedActions as BriefAction[]) ?? [];
   const health = readSourceHealth(brief.sourceHealth);
   const currentFollowedRecipientCount = await loadCurrentFollowedRecipientCount();
   const followedDeliveryRecipientCount =
@@ -51,9 +96,23 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
   const followedDeliveryLabel = health.followedWatchlistDelivery?.publishedAt
     ? "included recipients"
     : "eligible recipients";
+  const roleHandoff = BRIEF_AUDIENCES.map((audience) => ({
+    audience,
+    actions: actions.filter((action) => inferAudiences(action).includes(audience)).slice(0, 2),
+  }));
 
   return (
     <main className="mx-auto max-w-[960px] flex-1 overflow-y-auto px-10 py-12">
+      <UsageEventTracker
+        eventType="page_view"
+        surface="brief"
+        targetType="brief"
+        targetId={brief.id}
+        metadata={{
+          issueNumber: brief.issueNumber,
+          recipientCount: brief.recipients.length,
+        }}
+      />
       {/* Back link + meta */}
       <div className="mb-6 flex items-center justify-between">
         <Link href={"/briefs" as any} className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-ink">
@@ -100,6 +159,44 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
         queuedRecipientCount={brief.recipients.length}
       />
 
+      <div className="mb-8 flex flex-wrap gap-2">
+        <ShareLinkButton path={`/briefs/${brief.id}`} label="Share brief" />
+        <Link href={"/proof" as any} className="gcir-btn">
+          Open proof <ArrowUpRight className="h-3 w-3" />
+        </Link>
+      </div>
+
+      <Section
+        sectionCode="§00"
+        title="Delivery state"
+        meta={brief.recipients.length > 0 ? `${brief.recipients.length} queued` : "no recipients"}
+        icon={<Mail className="h-3.5 w-3.5" />}
+      >
+        {brief.recipients.length === 0 ? (
+          <Empty />
+        ) : (
+          <div className="overflow-hidden rounded-[7px] border border-line bg-bone">
+            <div className="grid grid-cols-[1fr_150px_150px_150px] border-b border-line bg-bone-2/70 px-4 py-2 font-mono text-[9.5px] uppercase tracking-[0.12em] text-muted">
+              <div>Recipient</div>
+              <div>Sent</div>
+              <div>Opened</div>
+              <div>Clicked</div>
+            </div>
+            {brief.recipients.map((recipient) => (
+              <div
+                key={recipient.id}
+                className="grid grid-cols-[1fr_150px_150px_150px] items-center border-b border-line/60 px-4 py-3 text-[12px] last:border-b-0"
+              >
+                <div className="font-mono text-ink">{recipient.email ?? "user-linked recipient"}</div>
+                <div className="text-muted">{recipient.sentAt ? fmtDate(recipient.sentAt) : "—"}</div>
+                <div className="text-muted">{recipient.openedAt ? fmtDate(recipient.openedAt) : "—"}</div>
+                <div className="text-muted">{recipient.clickedAt ? fmtDate(recipient.clickedAt) : "—"}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
       <Section
         sectionCode="§01"
         title="Top movers"
@@ -110,7 +207,9 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
           <Empty />
         ) : (
           <ul className="overflow-hidden rounded-[7px] border border-line bg-bone">
-            {movers.map((m, i) => (
+            {movers.map((m, i) => {
+              const delta = m.scoreDelta ?? m.delta;
+              return (
               <li
                 key={i}
                 className="grid grid-cols-[40px_1fr_auto_auto] items-center gap-4 border-b border-line/60 px-5 py-4 transition-colors last:border-b-0 hover:bg-bone-2/50"
@@ -123,17 +222,23 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
                   <div className="mt-0.5 font-mono text-[10.5px] uppercase tracking-[0.10em] text-muted">
                     {m.publicId ?? "—"}
                   </div>
+                  {m.headline && <div className="mt-1 text-[12px] leading-snug text-muted">{m.headline}</div>}
                 </div>
-                {m.scoreDelta != null && (
+                {delta != null && (
                   <span className="inline-flex items-center gap-1 rounded-[3px] border border-crit/30 bg-crit/[0.10] px-2 py-1 font-mono text-[12px] font-semibold text-crit tabular-nums">
-                    ▲ +{m.scoreDelta}
+                    ▲ +{delta}
                   </span>
                 )}
-                <button className="gcir-btn">
-                  Open <ArrowUpRight className="h-3 w-3" />
-                </button>
+                {m.projectId ? (
+                  <Link href={`/radar?projectId=${encodeURIComponent(m.projectId)}` as any} className="gcir-btn">
+                    Open <ArrowUpRight className="h-3 w-3" />
+                  </Link>
+                ) : (
+                  <span className="font-mono text-[9.5px] uppercase tracking-[0.10em] text-muted">unlinked</span>
+                )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </Section>
@@ -261,6 +366,34 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
 
       <Section
         sectionCode="§05"
+        title="Role handoff"
+        meta="cross-functional next moves"
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          {roleHandoff.map((lane) => (
+            <div key={lane.audience} className="rounded-[6px] border border-line bg-bone px-4 py-3.5">
+              <div className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-accent-ink">
+                {lane.audience}
+              </div>
+              {lane.actions.length === 0 ? (
+                <div className="text-[12.5px] leading-snug text-muted">No role-specific handoff was generated.</div>
+              ) : (
+                <ul className="space-y-2.5">
+                  {lane.actions.map((action) => (
+                    <li key={`${lane.audience}-${action.rank}-${action.title}`}>
+                      <div className="text-[13px] font-semibold tracking-tight text-ink">{action.title}</div>
+                      {action.why && <div className="mt-0.5 text-[12px] leading-snug text-muted">{action.why}</div>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <Section
+        sectionCode="§06"
         title="Source health"
         meta={`${health.items?.length ?? 0} sources`}
       >

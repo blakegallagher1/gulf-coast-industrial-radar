@@ -30,10 +30,15 @@ import { z, type ZodSchema, type ZodTypeDef } from "zod";
 import { prisma } from "@gcir/db";
 import { zodToJsonSchema } from "./openai-client";
 
-let _pplxClient: Perplexity | undefined;
-function getPerplexityClient() {
-  if (!_pplxClient) _pplxClient = new Perplexity({ apiKey: process.env.PERPLEXITY_API_KEY });
-  return _pplxClient;
+let client: Perplexity | undefined;
+
+function getClient(): Perplexity {
+  if (!client) {
+    client = new Perplexity({
+      apiKey: process.env.PERPLEXITY_API_KEY,
+    });
+  }
+  return client;
 }
 
 /**
@@ -44,9 +49,9 @@ function getPerplexityClient() {
  *
  * Source: https://docs.perplexity.ai/docs/agent-api/presets (April 2026)
  *
- *   fast-search             → xai/grok-4-1-fast-non-reasoning · 1 step  · web_search
- *   pro-search              → openai/gpt-5.1                  · 3 steps · web_search + fetch_url
- *   deep-research           → openai/gpt-5.2                  · 10 steps · web_search + fetch_url
+ *   fast-search              → xai/grok-4-1-fast-non-reasoning · 1 step  · web_search
+ *   pro-search               → openai/gpt-5.1                  · 3 steps · web_search + fetch_url
+ *   deep-research            → openai/gpt-5.2                  · 10 steps · web_search + fetch_url
  *   advanced-deep-research  → anthropic/claude-opus-4-6       · 10 steps · web_search + fetch_url
  */
 export const PPLX_PRESETS = {
@@ -392,7 +397,7 @@ async function callAgent(args: AgentInput): Promise<AgentResponse> {
   // failing the cron tick. The hard daily budget cap remains the safety net.
   const label = args.preset ?? args.model ?? "agent";
   return withRetry(
-    async () => (await getPerplexityClient().responses.create(args as never)) as unknown as AgentResponse,
+    async () => (await getClient().responses.create(args as never)) as unknown as AgentResponse,
     label,
   );
 }

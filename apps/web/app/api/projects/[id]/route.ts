@@ -14,11 +14,27 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   // 7-day delta
   const cutoff = new Date(Date.now() - 7 * 86400000);
-  const oldMilestone = await prisma.projectMilestone.findFirst({
-    where: { projectId: id, occurredAt: { lt: cutoff } },
-    orderBy: { occurredAt: "desc" },
-  });
-  const scoreDelta = oldMilestone ? 0 : null;
+  const [latestScoreAlert, oldScoreAlert] = await Promise.all([
+    prisma.alert.findFirst({
+      where: { projectId: id },
+      orderBy: { createdAt: "desc" },
+      select: { score: true, createdAt: true },
+    }),
+    prisma.alert.findFirst({
+      where: { projectId: id, createdAt: { lt: cutoff } },
+      orderBy: { createdAt: "desc" },
+      select: { score: true },
+    }),
+  ]);
+
+  const scoreDelta =
+    latestScoreAlert && oldScoreAlert
+      ? latestScoreAlert.score - oldScoreAlert.score
+      : oldScoreAlert == null && latestScoreAlert == null
+        ? null
+        : latestScoreAlert && latestScoreAlert.createdAt.getTime() < cutoff.getTime()
+          ? 0
+          : null;
 
   // Latest alert (Phase 3) — drives publicCoverageFound banner + supplementary evidence
   const latestAlert = await prisma.alert.findFirst({

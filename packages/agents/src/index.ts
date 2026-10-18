@@ -1,5 +1,6 @@
 export * from "./openai-client";
 export * as perplexity from "./perplexity-client";
+export { PerplexityDisabledError } from "./perplexity-client";
 export * from "./source-watcher";
 export * from "./evidence-archive";
 export * from "./document-extraction";
