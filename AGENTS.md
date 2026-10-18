@@ -1,3 +1,13 @@
+<!-- codex-model-defaults:start -->
+## Codex Model Defaults
+
+- Default Codex model: `gpt-5.5`. Keep this as the verified catalog default for daily sessions.
+- GPT-5.5 Pro on demand: start a new session with `codex --profile gpt55-pro`, or use `codex -m gpt-5.5-pro` for a one-off session when that model slug is exposed in the current Codex build/account.
+- The opt-in profile lives at `/Users/gallagherpropertycompany/.codex/gpt55-pro.config.toml` and sets `model = "gpt-5.5-pro"`, `model_reasoning_effort = "xhigh"`, and `service_tier = "priority"`.
+- Use GPT-5.5 Pro for high-accuracy review, architecture, security, diligence, and other complex agentic tasks; fall back to the verified `gpt-5.5` default if the Pro slug is unavailable.
+
+<!-- codex-model-defaults:end -->
+
 # Agent Instructions — Gulf Coast Industrial Radar
 
 This is now a runnable Next.js + Prisma monorepo. The original markdown-first
