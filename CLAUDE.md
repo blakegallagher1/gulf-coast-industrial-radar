@@ -54,7 +54,7 @@ pnpm studio                                   # Prisma Studio
 | `SAM_GOV_API_KEY` | Optional — SAM.gov adapter |
 | `EVIDENCE_ACCESS_KEY`, `EVIDENCE_SECRET_KEY` | S3-compatible raw-evidence object storage |
 | `SENTRY_DSN` | Optional observability |
-| `GCIR_EMAIL_ALLOWLIST` | Login allowlist; defaults to `blake@gallagherpropco.com` |
+| `GCIR_EMAIL_ALLOWLIST` | Unenforced configuration placeholder; current auth checks sign-in only, not email membership |
 
 Feature flags (all off by default in prod): `FEATURE_QLAD_LIVE_ALERTING`, `FEATURE_PERPLEXITY_VALIDATION`, `WORKER_CRON_ENABLED`.
 
@@ -71,12 +71,12 @@ Feature flags (all off by default in prod): `FEATURE_QLAD_LIVE_ALERTING`, `FEATU
 2. **Every claim-bearing object requires provenance:** `sourceId`, `rawDocumentId`, `observedAt`, `documentDate`, `confidence`, and a verbatim `evidenceSpan` from `DocumentExtraction`.
 3. **`knowledge/` is canonical** for product decisions. Read it before making architectural choices.
 4. **Signal predicates follow `family.subject.qualifier`** (e.g. `permit.air.NOI`, `incentive.itep.eligible`). New ones must be documented in `packages/agents/src/document-extraction.ts`.
-5. **High-impact conclusions require `AnalystReview`** before external distribution — sponsor identity, acquisition strategy, legal/environmental/entitlement risk.
+5. **Manually verify `AnalystReview` before external distribution** of high-impact conclusions — sponsor identity, acquisition strategy, legal/environmental/entitlement risk. The publish endpoint does not enforce this review.
 6. **QLAD live alerting:** enable `FEATURE_QLAD_LIVE_ALERTING` together with `FEATURE_PERPLEXITY_VALIDATION` and `WORKER_CRON_ENABLED=true`.
 7. **Perplexity budget caps:** $50/day (`PERPLEXITY_DAILY_BUDGET_USD`), $0.50/trigger. `/admin/runs` shows a red banner when spend exceeds 75% of daily cap.
 8. **Per-agent OpenAI fallback:** `AGENT_BACKEND_<NAME>=openai` rolls a specific agent off Perplexity without redeploying.
 9. **Three ArcGIS base URLs verified** for parish assessors (env-controlled): Ascension, EBR (`maps.brla.gov`), Calcasieu (`lak-dc-arcgis.cppj.net` — `gis.calcasieuassessor.org` is offline).
-10. **Don't auto-publish briefs** — Resend delivery is gated on `AnalystReview` for any signal that names a sponsor or assembles parcels.
+10. **Don't auto-publish briefs** — manually verify analyst approval before Resend delivery for any signal that names a sponsor or assembles parcels. The publish endpoint sends email without checking `AnalystReview`.
 
 ## Routing for Claude
 
