@@ -101,7 +101,7 @@ export function RadarMap({
   activeId,
   onSelect,
 }: {
-  projects: RadarProject[];
+  projects: Array<RadarProject & { lat: number; lng: number }>;
   activeId: string | null;
   onSelect: (id: string) => void;
 }) {
@@ -383,7 +383,7 @@ function FallbackMap({
   activeId,
   onSelect,
 }: {
-  projects: RadarProject[];
+  projects: Array<RadarProject & { lat: number; lng: number }>;
   activeId: string | null;
   onSelect: (id: string) => void;
 }) {

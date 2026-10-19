@@ -6,6 +6,9 @@ import { fmtDate } from "@/lib/format";
 import { ShareLinkButton } from "@/components/share-link-button";
 import { UsageEventTracker } from "@/components/usage-event-tracker";
 import { PublishControls } from "./publish-controls";
+import { getDatabaseUser } from "@/app/api/_lib/require-user";
+import { canViewBriefRecipientDetails } from "@/lib/brief-delivery";
+import { formatScoreDelta } from "@/lib/score-delta";
 
 export const dynamic = "force-dynamic";
 
@@ -63,22 +66,29 @@ function inferAudiences(action: BriefAction): BriefAudience[] {
 
 export default async function BriefView({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const viewer = await getDatabaseUser();
+  const canViewRecipientDetails = canViewBriefRecipientDetails(viewer);
   const brief = await prisma.brief.findUnique({
     where: { id },
-    include: {
-      recipients: {
-        orderBy: [{ sentAt: "desc" }, { email: "asc" }],
-        select: {
-          id: true,
-          email: true,
-          sentAt: true,
-          openedAt: true,
-          clickedAt: true,
-        },
-      },
-    },
   });
   if (!brief) notFound();
+
+  const [recipientCount, recipients] = await Promise.all([
+    prisma.briefRecipient.count({ where: { briefId: brief.id } }),
+    canViewRecipientDetails
+      ? prisma.briefRecipient.findMany({
+          where: { briefId: brief.id },
+          orderBy: [{ sentAt: "desc" }, { email: "asc" }],
+          select: {
+            id: true,
+            email: true,
+            sentAt: true,
+            openedAt: true,
+            clickedAt: true,
+          },
+        })
+      : Promise.resolve([]),
+  ]);
 
   const movers = (brief.topMovers as Array<{
     projectId?: string | null;
@@ -110,7 +120,7 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
         targetId={brief.id}
         metadata={{
           issueNumber: brief.issueNumber,
-          recipientCount: brief.recipients.length,
+          recipientCount,
         }}
       />
       {/* Back link + meta */}
@@ -149,15 +159,17 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
         <div className="gcir-horizon mt-7" />
       </header>
 
-      <PublishControls
-        briefId={brief.id}
-        initialPublished={Boolean(brief.publishedAt)}
-        followedWatchlistCount={health.followedWatchlists.length}
-        watchlistFocusCount={health.watchlistFocus.length}
-        followedDeliveryRecipientCount={followedDeliveryRecipientCount}
-        followedDeliveryLabel={followedDeliveryLabel}
-        queuedRecipientCount={brief.recipients.length}
-      />
+      {canViewRecipientDetails && (
+        <PublishControls
+          briefId={brief.id}
+          initialPublished={Boolean(brief.publishedAt)}
+          followedWatchlistCount={health.followedWatchlists.length}
+          watchlistFocusCount={health.watchlistFocus.length}
+          followedDeliveryRecipientCount={followedDeliveryRecipientCount}
+          followedDeliveryLabel={followedDeliveryLabel}
+          queuedRecipientCount={recipientCount}
+        />
+      )}
 
       <div className="mb-8 flex flex-wrap gap-2">
         <ShareLinkButton path={`/briefs/${brief.id}`} label="Share brief" />
@@ -169,11 +181,15 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
       <Section
         sectionCode="§00"
         title="Delivery state"
-        meta={brief.recipients.length > 0 ? `${brief.recipients.length} queued` : "no recipients"}
+        meta={recipientCount > 0 ? `${recipientCount} queued` : "no recipients"}
         icon={<Mail className="h-3.5 w-3.5" />}
       >
-        {brief.recipients.length === 0 ? (
+        {recipientCount === 0 ? (
           <Empty />
+        ) : !canViewRecipientDetails ? (
+          <div className="rounded-[7px] border border-line bg-bone-2/60 px-4 py-4 text-[12.5px] text-muted">
+            {recipientCount} recipient{recipientCount === 1 ? " is" : "s are"} queued. Email addresses and delivery events are restricted to authorized operators.
+          </div>
         ) : (
           <div className="overflow-hidden rounded-[7px] border border-line bg-bone">
             <div className="grid grid-cols-[1fr_150px_150px_150px] border-b border-line bg-bone-2/70 px-4 py-2 font-mono text-[9.5px] uppercase tracking-[0.12em] text-muted">
@@ -182,7 +198,7 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
               <div>Opened</div>
               <div>Clicked</div>
             </div>
-            {brief.recipients.map((recipient) => (
+            {recipients.map((recipient) => (
               <div
                 key={recipient.id}
                 className="grid grid-cols-[1fr_150px_150px_150px] items-center border-b border-line/60 px-4 py-3 text-[12px] last:border-b-0"
@@ -209,6 +225,7 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
           <ul className="overflow-hidden rounded-[7px] border border-line bg-bone">
             {movers.map((m, i) => {
               const delta = m.scoreDelta ?? m.delta;
+              const deltaPresentation = delta == null ? null : formatScoreDelta(delta);
               return (
               <li
                 key={i}
@@ -224,9 +241,15 @@ export default async function BriefView({ params }: { params: Promise<{ id: stri
                   </div>
                   {m.headline && <div className="mt-1 text-[12px] leading-snug text-muted">{m.headline}</div>}
                 </div>
-                {delta != null && (
-                  <span className="inline-flex items-center gap-1 rounded-[3px] border border-crit/30 bg-crit/[0.10] px-2 py-1 font-mono text-[12px] font-semibold text-crit tabular-nums">
-                    ▲ +{delta}
+                {deltaPresentation && (
+                  <span className={
+                    deltaPresentation.tone === "positive"
+                      ? "inline-flex items-center gap-1 rounded-[3px] border border-crit/30 bg-crit/[0.10] px-2 py-1 font-mono text-[12px] font-semibold text-crit tabular-nums"
+                      : deltaPresentation.tone === "negative"
+                        ? "inline-flex items-center gap-1 rounded-[3px] border border-info/30 bg-info/[0.10] px-2 py-1 font-mono text-[12px] font-semibold text-info tabular-nums"
+                        : "inline-flex items-center gap-1 rounded-[3px] border border-line bg-bone-2 px-2 py-1 font-mono text-[12px] font-semibold text-muted tabular-nums"
+                  }>
+                    {deltaPresentation.label}
                   </span>
                 )}
                 {m.projectId ? (

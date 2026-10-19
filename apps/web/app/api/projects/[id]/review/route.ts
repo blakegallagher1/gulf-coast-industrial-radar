@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { AnalystState } from "@gcir/db";
 import { prisma } from "@gcir/db";
 import { setReviewState } from "@gcir/agents";
-import { requireUser } from "../../../_lib/require-user";
+import { requireDatabaseUser } from "../../../_lib/require-user";
 
 const ALLOWED_STATES = new Set<AnalystState>([
   AnalystState.WATCH,
@@ -45,7 +45,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const gate = await requireUser();
+  const gate = await requireDatabaseUser();
   if (!gate.ok) return gate.response;
 
   const { id } = await params;
@@ -60,7 +60,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     );
   }
 
-  await setReviewState(id, state, gate.userId ?? undefined, note);
+  await setReviewState(id, state, gate.databaseUserId ?? undefined, note);
 
   return NextResponse.json({ ok: true });
 }

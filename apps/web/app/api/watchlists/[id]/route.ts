@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@gcir/db";
-import { requireUser } from "../../_lib/require-user";
+import { requireDatabaseUser } from "../../_lib/require-user";
 
 type WatchlistMetaBody = {
   followed?: boolean;
@@ -11,7 +11,7 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const gate = await requireUser();
+  const gate = await requireDatabaseUser();
   if (!gate.ok) return gate.response;
 
   const { id } = await params;
@@ -26,7 +26,7 @@ export async function PATCH(
     return NextResponse.json({ ok: false, error: "Watchlist not found." }, { status: 404 });
   }
 
-  if (gate.userId && existing.userId && existing.userId !== gate.userId) {
+  if (gate.databaseUserId && existing.userId && existing.userId !== gate.databaseUserId) {
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
 
