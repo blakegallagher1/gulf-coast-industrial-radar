@@ -8,24 +8,9 @@ import { AlertsOverlay } from "./AlertsOverlay";
 import { FilterRail } from "./FilterRail";
 import { StatusBar } from "./StatusBar";
 import { Drawer } from "./Drawer";
+import type { RadarProjectData } from "@/lib/radar-projects";
 
-export type RadarProject = {
-  id: string;
-  publicId: string;
-  name: string;
-  stage: string;
-  score: number;
-  band: ScoreBand;
-  parishCounty: string;
-  state: string;
-  corridor: string;
-  acres: number | null;
-  facilityType: string | null;
-  lat: number;
-  lng: number;
-  firstSignalAt: string | null;
-  estimatedCapex: string | null;
-};
+export type RadarProject = RadarProjectData;
 
 type Health = { ok: number; degraded: number; total: number };
 
@@ -70,10 +55,18 @@ export function RadarShell({
     () =>
       projects.filter(
         (p) =>
-          (p.corridor === "" || corridorFilter.has(p.corridor)) &&
-          bandFilter.has(p.band),
+          p.id === initialProjectId ||
+          ((p.corridor === "" || corridorFilter.has(p.corridor)) && bandFilter.has(p.band)),
       ),
-    [projects, corridorFilter, bandFilter],
+    [projects, corridorFilter, bandFilter, initialProjectId],
+  );
+
+  const mappedProjects = useMemo(
+    () => visibleProjects.filter(
+      (project): project is RadarProject & { lat: number; lng: number } =>
+        project.lat != null && project.lng != null,
+    ),
+    [visibleProjects],
   );
 
   const visibleCommandProjects = useMemo<RadarProject[]>(() => {
@@ -380,7 +373,7 @@ export function RadarShell({
           </div>
 
           <RadarMap
-            projects={visibleProjects}
+            projects={mappedProjects}
             activeId={active?.id ?? null}
             onSelect={onSelect}
           />

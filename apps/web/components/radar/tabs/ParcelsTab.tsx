@@ -105,7 +105,13 @@ export function ParcelsTab({
 
   /* ── init map ───────────────────────────────────────────────────── */
   useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return;
+    if (
+      !mapContainerRef.current ||
+      mapRef.current ||
+      project.lat == null ||
+      project.lng == null
+    ) return;
+    const center: [number, number] = [project.lng, project.lat];
 
     if (!document.getElementById("gcir-popup-style")) {
       const s = document.createElement("style");
@@ -152,7 +158,7 @@ export function ParcelsTab({
           { id: "labels", type: "raster", source: "labels", paint: { "raster-opacity": 0.8 } },
         ],
       } as never,
-      center: [project.lng, project.lat],
+      center,
       zoom: 11.5,
       attributionControl: { compact: true },
     });
@@ -246,10 +252,16 @@ export function ParcelsTab({
     <div className="flex flex-col gap-4">
 
       {/* ── map ─────────────────────────────────────────────────── */}
-      <div
-        ref={mapContainerRef}
-        className="h-[300px] overflow-hidden rounded-lg border border-line"
-      />
+      {project.lat == null || project.lng == null ? (
+        <div className="flex h-[160px] items-center justify-center rounded-lg border border-dashed border-line bg-bone-2 px-6 text-center text-[12.5px] text-muted">
+          This project has no mapped site coordinates yet. Project evidence and review details remain available in the other tabs.
+        </div>
+      ) : (
+        <div
+          ref={mapContainerRef}
+          className="h-[300px] overflow-hidden rounded-lg border border-line"
+        />
+      )}
 
       {/* ── stats row ───────────────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-2.5">

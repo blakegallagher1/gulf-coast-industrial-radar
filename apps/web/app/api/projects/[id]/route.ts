@@ -12,29 +12,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   });
   if (!project) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  // 7-day delta
-  const cutoff = new Date(Date.now() - 7 * 86400000);
-  const [latestScoreAlert, oldScoreAlert] = await Promise.all([
-    prisma.alert.findFirst({
-      where: { projectId: id },
-      orderBy: { createdAt: "desc" },
-      select: { score: true, createdAt: true },
-    }),
-    prisma.alert.findFirst({
-      where: { projectId: id, createdAt: { lt: cutoff } },
-      orderBy: { createdAt: "desc" },
-      select: { score: true },
-    }),
-  ]);
-
-  const scoreDelta =
-    latestScoreAlert && oldScoreAlert
-      ? latestScoreAlert.score - oldScoreAlert.score
-      : oldScoreAlert == null && latestScoreAlert == null
-        ? null
-        : latestScoreAlert && latestScoreAlert.createdAt.getTime() < cutoff.getTime()
-          ? 0
-          : null;
+  // Alerts are mutable delivery records, not score snapshots. Until immutable
+  // score history exists, the seven-day delta is intentionally unknown.
+  const scoreDelta = null;
 
   // Latest alert (Phase 3) — drives publicCoverageFound banner + supplementary evidence
   const latestAlert = await prisma.alert.findFirst({

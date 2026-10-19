@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@gcir/db";
-import { requireUser } from "../_lib/require-user";
+import { requireDatabaseUser } from "../_lib/require-user";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,7 @@ type CreateWatchlistBody = {
 };
 
 export async function POST(req: Request) {
-  const gate = await requireUser();
+  const gate = await requireDatabaseUser();
   if (!gate.ok) return gate.response;
 
   const body = (await req.json().catch(() => null)) as CreateWatchlistBody | null;
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
 
     const watchlist = await prisma.watchlist.create({
       data: {
-        userId: gate.userId,
+        userId: gate.databaseUserId,
         name,
         description,
         isShared: body?.isShared !== false,
@@ -115,7 +115,7 @@ export async function POST(req: Request) {
 
   const existingWatchlist = await prisma.watchlist.findFirst({
     where: {
-      userId: gate.userId ?? null,
+      userId: gate.databaseUserId,
       name,
       isShared,
       items: {
@@ -137,7 +137,7 @@ export async function POST(req: Request) {
 
   const watchlist = await prisma.watchlist.create({
     data: {
-      userId: gate.userId,
+      userId: gate.databaseUserId,
       name,
       description,
       isShared,
