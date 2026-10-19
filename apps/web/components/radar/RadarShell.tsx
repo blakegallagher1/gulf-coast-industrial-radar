@@ -8,7 +8,7 @@ import { AlertsOverlay } from "./AlertsOverlay";
 import { FilterRail } from "./FilterRail";
 import { StatusBar } from "./StatusBar";
 import { Drawer } from "./Drawer";
-import type { RadarProjectData } from "@/lib/radar-projects";
+import { resolveInitialRadarProjectId, type RadarProjectData } from "@/lib/radar-projects";
 
 export type RadarProject = RadarProjectData;
 
@@ -39,7 +39,9 @@ export function RadarShell({
   nowIso: string;
   plan?: "free" | "pro";
 }) {
-  const [activeId, setActiveId] = useState<string | null>(projects[0]?.id ?? null);
+  const [activeId, setActiveId] = useState<string | null>(() =>
+    resolveInitialRadarProjectId(projects, initialProjectId),
+  );
   const [corridorFilter, setCorridorFilter] = useState<Set<string>>(new Set(CORRIDORS));
   const [bandFilter, setBandFilter] = useState<Set<ScoreBand>>(
     new Set<ScoreBand>(["high", "elevated", "watch"]),
@@ -48,7 +50,7 @@ export function RadarShell({
   const [commandQuery, setCommandQuery] = useState("");
   const [commandSelection, setCommandSelection] = useState(0);
   const [isAlertQueueCollapsed, setIsAlertQueueCollapsed] = useState(true);
-  const [isDrawerCollapsed, setIsDrawerCollapsed] = useState(true);
+  const [isDrawerCollapsed, setIsDrawerCollapsed] = useState(!initialProjectId);
   const commandInputRef = useRef<HTMLInputElement>(null);
 
   const visibleProjects = useMemo<RadarProject[]>(
@@ -117,6 +119,7 @@ export function RadarShell({
     const focused = projects.find((project) => project.id === initialProjectId);
     if (focused) {
       setActiveId(focused.id);
+      setIsDrawerCollapsed(false);
     }
   }, [initialProjectId, projects]);
 

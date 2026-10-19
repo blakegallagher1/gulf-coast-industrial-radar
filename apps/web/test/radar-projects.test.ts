@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRadarProjects } from "../lib/radar-projects";
+import { buildRadarProjects, resolveInitialRadarProjectId } from "../lib/radar-projects";
 
 const base = {
   publicId: "PRJ-1",
@@ -23,5 +23,6 @@ describe("radar requested project inclusion", () => {
 
     expect(projects.map((project) => project.id)).toEqual(["feed", "requested"]);
     expect(projects[1]).toMatchObject({ id: "requested", lat: null, lng: null });
+    expect(resolveInitialRadarProjectId(projects, "requested")).toBe("requested");
   });
 });

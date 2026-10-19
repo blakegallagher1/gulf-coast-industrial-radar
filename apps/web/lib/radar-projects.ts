@@ -75,3 +75,13 @@ export function buildRadarProjects(
   }
   return projects;
 }
+
+export function resolveInitialRadarProjectId(
+  projects: Array<Pick<RadarProjectData, "id">>,
+  requestedProjectId?: string,
+): string | null {
+  if (requestedProjectId && projects.some((project) => project.id === requestedProjectId)) {
+    return requestedProjectId;
+  }
+  return projects[0]?.id ?? null;
+}
